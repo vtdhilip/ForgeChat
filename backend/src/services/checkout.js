@@ -186,7 +186,7 @@ async function createShopifyDraftOrder({ lineItems, customerName, contactNumber,
 /**
  * Main Checkout Handler: Creates Draft Order, Payment Link, and records in Database
  */
-async function processOrderCheckout({ contactNumber, contactName, deliveryAddress, orderData, shippingFee = 60, customSubtotal = null }) {
+async function processOrderCheckout({ contactNumber, contactName, deliveryAddress, orderData, shippingFee = 60, customSubtotal = null, waNumber = null }) {
   await ensureOrdersTable();
 
   const orderNumber = generateOrderNumber();
@@ -247,15 +247,16 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
   try {
     const { rows } = await pool.query(
       `INSERT INTO coexistence.orders
-         (order_number, shopify_draft_order_id, shopify_order_number, contact_number, contact_name,
+         (order_number, shopify_draft_order_id, shopify_order_number, wa_number, contact_number, contact_name,
           delivery_address, items, subtotal, shipping_fee, total_amount, currency, status,
           razorpay_payment_link_id, payment_link_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'unpaid', $12, $13)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'unpaid', $13, $14)
        RETURNING *`,
       [
         orderNumber,
         shopifyDraft?.id || null,
         shopifyDraft?.name || null,
+        waNumber || null,
         contactNumber,
         contactName || null,
         deliveryAddress || null,

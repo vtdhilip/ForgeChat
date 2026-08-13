@@ -401,6 +401,7 @@ async function executeMessageNode(client, executionId, node, context) {
           deliveryAddress,
           orderData: context.trigger_data?.order_data || null,
           shippingFee: parseFloat(node.shipping_fee || 60),
+          waNumber: context.trigger_data?.wa_number || null,
         });
 
         if (!context.extra_lookup) context.extra_lookup = {};
