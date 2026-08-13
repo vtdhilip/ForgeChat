@@ -366,8 +366,45 @@ async function executeMessageNode(client, executionId, node, context) {
     };
   } else {
     const dd = node.directData || {};
-    const resolvedBody = resolveVariables(dd.body, context);
     const directType = node.directType || 'text';
+
+    // Auto-checkout: if this message contains payment/order tokens (payment_link, subtotal, shipping_fee, order_total, order_number)
+    // but processOrderCheckout hasn't been run in this context yet, auto-run checkout to generate live order & payment link.
+    const bodyRaw = String(dd.body || '');
+    const urlRaw = String(dd.url || '');
+    const needsCheckout = /\{\{(payment_link|order_number|subtotal|shipping_fee|order_total|total_amount)\}\}/i.test(bodyRaw + ' ' + urlRaw) || directType === 'cta_url';
+
+    if (needsCheckout && !context.extra_lookup?.payment_link) {
+      try {
+        const { processOrderCheckout } = require('../services/checkout');
+        const contactObj = context.contact || {};
+        const deliveryAddress = getFieldValue('delivery_address', contactObj, context) || getFieldValue('address', contactObj, context) || context.message_body || '';
+
+        const checkoutResult = await processOrderCheckout({
+          contactNumber: context.contact_number,
+          contactName: contactObj.name || contactObj.profile_name,
+          deliveryAddress,
+          orderData: context.trigger_data?.order_data || null,
+          shippingFee: parseFloat(node.shipping_fee || 60),
+        });
+
+        if (!context.extra_lookup) context.extra_lookup = {};
+        Object.assign(context.extra_lookup, {
+          order_number: checkoutResult.order_number,
+          order_id: checkoutResult.order_number,
+          subtotal: checkoutResult.subtotal,
+          shipping_fee: checkoutResult.shipping_fee,
+          total_amount: checkoutResult.total_amount,
+          order_total: checkoutResult.total_amount,
+          payment_link: checkoutResult.payment_link,
+          shopify_draft_order_id: checkoutResult.shopify_draft_order_id || '',
+        });
+      } catch (chkErr) {
+        console.error('[engine] Auto-checkout error:', chkErr.message);
+      }
+    }
+
+    const resolvedBody = resolveVariables(dd.body, context);
 
     // Dynamic API: not a WhatsApp message — perform a raw HTTP call to a
     // third-party endpoint and log the response on the execution step.
