@@ -30,8 +30,12 @@ function verifyRazorpaySignature(rawBody, signature, secret) {
       .createHmac('sha256', secret)
       .update(rawBody)
       .digest('hex');
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-  } catch {
+    const expectedBuf = Buffer.from(expected);
+    const signatureBuf = Buffer.from(signature);
+    if (expectedBuf.length !== signatureBuf.length) return false;
+    return crypto.timingSafeEqual(expectedBuf, signatureBuf);
+  } catch (err) {
+    console.error('[razorpay-webhook] Signature verification error:', err.message);
     return false;
   }
 }
@@ -40,14 +44,17 @@ function verifyRazorpaySignature(rawBody, signature, secret) {
 async function sendWhatsAppConfirmation({ waNumber, contactNumber, orderNumber, totalAmount, paymentId }) {
   try {
     // Find the WhatsApp account for this wa_number
-    const { rows: acctRows } = await pool.query(
-      `SELECT id FROM coexistence.whatsapp_accounts
-        WHERE wa_number = $1 AND is_active = true
-        LIMIT 1`,
-      [waNumber]
-    );
+    let acctQuery = `SELECT id FROM coexistence.whatsapp_accounts WHERE is_active = true`;
+    const params = [];
+    if (waNumber) {
+      acctQuery += ` AND wa_number = $1`;
+      params.push(waNumber);
+    }
+    acctQuery += ` LIMIT 1`;
+
+    const { rows: acctRows } = await pool.query(acctQuery, params);
     if (acctRows.length === 0) {
-      console.warn(`[razorpay-webhook] No active WA account found for wa_number=${waNumber}`);
+      console.warn(`[razorpay-webhook] No active WA account found (wa_number=${waNumber})`);
       return;
     }
     const accountId = acctRows[0].id;
@@ -87,19 +94,20 @@ async function sendWhatsAppConfirmation({ waNumber, contactNumber, orderNumber, 
 
 // ─── POST /api/razorpay/webhook ──────────────────────────────────────────────
 router.post('/', async (req, res) => {
-  // rawBody is attached by express.raw() middleware (see app.js / server.js)
   const rawBody = req.rawBody || JSON.stringify(req.body);
   const signature = req.headers['x-razorpay-signature'] || '';
   const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
 
+  console.log(`[razorpay-webhook] Inbound request received from ${req.ip}`);
+
   // Verify signature if secret is configured
   if (webhookSecret) {
     if (!verifyRazorpaySignature(rawBody, signature, webhookSecret)) {
-      console.warn('[razorpay-webhook] Invalid signature — request rejected');
+      console.warn('[razorpay-webhook] Signature verification failed!');
       return res.status(400).json({ error: 'Invalid signature' });
     }
   } else {
-    console.warn('[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET not set — skipping signature check');
+    console.log('[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET not set in .env — accepting request');
   }
 
   let event;
@@ -110,40 +118,49 @@ router.post('/', async (req, res) => {
   }
 
   const eventType = event?.event;
-  console.log(`[razorpay-webhook] Received event: ${eventType}`);
+  console.log(`[razorpay-webhook] Event: ${eventType}`);
 
-  // ── payment_link.paid ────────────────────────────────────────────────────
-  if (eventType === 'payment_link.paid') {
+  // ── Payment Success Events ──────────────────────────────────────────────
+  const paidEvents = ['payment_link.paid', 'payment.captured', 'order.paid'];
+  if (paidEvents.includes(eventType)) {
     const pl = event?.payload?.payment_link?.entity || {};
     const payment = event?.payload?.payment?.entity || {};
+    const orderEntity = event?.payload?.order?.entity || {};
 
-    const paymentLinkId = pl.id;               // plink_XXXX
-    const paymentId = payment.id || '';        // pay_XXXX
-    const amountPaid = (pl.amount_paid || payment.amount || 0) / 100; // paise → ₹
+    const paymentLinkId = pl.id || payment.payment_link_id || null;
+    const paymentId = payment.id || pl.payment_id || '';
+    const razorpayOrderId = orderEntity.id || payment.order_id || null;
 
-    if (!paymentLinkId) {
-      return res.status(200).json({ status: 'ignored', reason: 'no payment_link id' });
+    let orderNumber = pl.notes?.order_number || payment.notes?.order_number || orderEntity.notes?.order_number || null;
+    if (!orderNumber) {
+      const desc = pl.description || payment.description || '';
+      const m = desc.match(/Order #?(TJ-\d+)/i);
+      if (m) orderNumber = m[1].toUpperCase();
     }
+
+    console.log(`[razorpay-webhook] Searching order (paymentLinkId=${paymentLinkId}, orderNumber=${orderNumber}, paymentId=${paymentId})`);
 
     try {
       // Update order status in DB
       const { rows } = await pool.query(
         `UPDATE coexistence.orders
             SET status = 'paid',
-                razorpay_payment_id = $1,
+                razorpay_payment_id = COALESCE(NULLIF($1, ''), razorpay_payment_id),
                 updated_at = NOW()
-          WHERE razorpay_payment_link_id = $2
+          WHERE (razorpay_payment_link_id IS NOT NULL AND razorpay_payment_link_id = $2)
+             OR (order_number IS NOT NULL AND order_number = $3)
+             OR (razorpay_order_id IS NOT NULL AND razorpay_order_id = $4)
           RETURNING order_number, contact_number, wa_number, total_amount`,
-        [paymentId, paymentLinkId]
+        [paymentId, paymentLinkId, orderNumber, razorpayOrderId]
       );
 
       if (rows.length === 0) {
-        console.warn(`[razorpay-webhook] No order found for payment_link_id=${paymentLinkId}`);
+        console.warn(`[razorpay-webhook] No matching order found in database (link=${paymentLinkId}, order=${orderNumber})`);
         return res.status(200).json({ status: 'not_found' });
       }
 
       const order = rows[0];
-      console.log(`[razorpay-webhook] Order ${order.order_number} marked PAID (payment: ${paymentId})`);
+      console.log(`[razorpay-webhook] ✅ Order ${order.order_number} marked PAID (Payment: ${paymentId})`);
 
       // Update Google Sheet status to PAID
       updateOrderPaymentInGoogleSheet(order.order_number, 'paid', paymentId).catch(sheetErr => {
@@ -151,7 +168,7 @@ router.post('/', async (req, res) => {
       });
 
       // Send WhatsApp confirmation
-      if (order.wa_number && order.contact_number) {
+      if (order.contact_number) {
         await sendWhatsAppConfirmation({
           waNumber: order.wa_number,
           contactNumber: order.contact_number,
@@ -168,7 +185,7 @@ router.post('/', async (req, res) => {
     }
   }
 
-  // ── payment_link.cancelled / expired ────────────────────────────────────
+  // ── Payment Cancelled / Expired ─────────────────────────────────────────
   if (eventType === 'payment_link.cancelled' || eventType === 'payment_link.expired') {
     const pl = event?.payload?.payment_link?.entity || {};
     const paymentLinkId = pl.id;
@@ -192,7 +209,7 @@ router.post('/', async (req, res) => {
     return res.status(200).json({ status: 'ok' });
   }
 
-  // All other events — acknowledge but ignore
+  // All other events
   return res.status(200).json({ status: 'ignored', event: eventType });
 });
 
