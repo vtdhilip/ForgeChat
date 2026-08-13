@@ -545,6 +545,7 @@ const ACTION_KINDS = [
   { kind:"Remove Tag",         icon:IC.tag,      valueType:"tag",     emptyText:"Choose a tag" },
   { kind:"Set Custom Field",   icon:IC.cog,      valueType:"field",   emptyText:"Pick a field and value" },
   { kind:"Clear Custom Field", icon:IC.cog,      valueType:"field",   emptyText:"Pick a field to clear" },
+  { kind:"Create Order & Payment Link", icon:IC.bcast, valueType:"text", emptyText:"Shipping fee in ₹ (default: 60)", placeholder:"60" },
   { kind:"Update Lead Score",  icon:IC.chart,    valueType:"leadScore",emptyText:"Set point change" },
   { kind:"Subscribe Contact",  icon:IC.bcast,    valueType:"none",    emptyText:"Contact is subscribed" },
   { kind:"Unsubscribe Contact",icon:IC.bcast,    valueType:"none",    emptyText:"Contact is unsubscribed" },

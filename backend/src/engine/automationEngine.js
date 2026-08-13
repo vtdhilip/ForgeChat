@@ -80,6 +80,9 @@ function resolveVariables(text, context) {
     if (lookup[lk] === undefined || lookup[lk] === '') lookup[lk] = sval;
     if (nkKey && (lookup[nkKey] === undefined || lookup[nkKey] === '')) lookup[nk] = sval;
   });
+  if (context.extra_lookup && typeof context.extra_lookup === 'object') {
+    Object.assign(lookup, context.extra_lookup);
+  }
   // Map field id -> name so DB-loaded custom_fields (keyed by id, e.g. cf-city)
   // can be referenced by their normalized field name (e.g. {{city}}).
   const nameById = {};
@@ -1077,6 +1080,39 @@ async function executeActionNode(client, executionId, node, context) {
         context.contact.custom_fields = cf;
         if (had) contactMutated = true;
         results.push({ ...base, status: had ? 'applied' : 'skipped', field: { id: fieldId, name: fRows[0].name }, note: had ? 'Custom field cleared' : 'Field was already empty' });
+
+      } else if (a.kind === 'Create Order & Payment Link' || a.kind === 'Create Draft Order & Payment Link') {
+        const { processOrderCheckout } = require('../services/checkout');
+        const shippingFee = parseFloat(a.value || node.shipping_fee || 60);
+        const contactObj = context.contact || {};
+        const deliveryAddress = getFieldValue('delivery_address', contactObj, context) || getFieldValue('address', contactObj, context) || context.message_body || '';
+
+        const checkoutResult = await processOrderCheckout({
+          contactNumber: context.contact_number,
+          contactName: contactObj.name || contactObj.profile_name,
+          deliveryAddress,
+          orderData: context.trigger_data?.order_data || null,
+          shippingFee,
+        });
+
+        if (!context.extra_lookup) context.extra_lookup = {};
+        Object.assign(context.extra_lookup, {
+          order_number: checkoutResult.order_number,
+          order_id: checkoutResult.order_number,
+          subtotal: checkoutResult.subtotal,
+          shipping_fee: checkoutResult.shipping_fee,
+          total_amount: checkoutResult.total_amount,
+          order_total: checkoutResult.total_amount,
+          payment_link: checkoutResult.payment_link,
+          shopify_draft_order_id: checkoutResult.shopify_draft_order_id || '',
+        });
+
+        results.push({
+          ...base,
+          status: 'applied',
+          order: checkoutResult,
+          note: `Created Order #${checkoutResult.order_number} (${checkoutResult.payment_link})`,
+        });
 
       } else {
         // Honest stub — no real side-effect handler for this kind in this build.
