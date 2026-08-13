@@ -55,6 +55,8 @@ function resolveVariables(text, context) {
   // (Conditions use the RAW captured name via getFieldValue — see below.)
   const displayName = contact.name || contact.profile_name || '';
   const lastMsg = context.message_body || context.trigger_data?.message_body || '';
+  const orderData = context.trigger_data?.order_data || null;
+  const orderTotal = orderData?.total_amount ? `${orderData.currency || '₹'}${orderData.total_amount.toFixed(2)}` : '';
   const lookup = {
     name: displayName,
     first_name: displayName.split(' ')[0] || '',
@@ -64,6 +66,11 @@ function resolveVariables(text, context) {
     last_message: lastMsg,
     last_input: lastMsg,
     user_message: lastMsg,
+    product: lastMsg,
+    cart_items: lastMsg,
+    order_items: lastMsg,
+    order_total: orderTotal,
+    cart_total: orderTotal,
   };
   // Map field id -> name so DB-loaded custom_fields (keyed by id, e.g. cf-city)
   // can be referenced by their normalized field name (e.g. {{city}}).

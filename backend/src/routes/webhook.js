@@ -133,7 +133,32 @@ function parseMetaPayload(body) {
             from: msg.from || null,
           };
         } else if (type === 'order' && msg.order) {
-          record.message_body = 'Order received';
+          const o = msg.order;
+          const items = Array.isArray(o.product_items) ? o.product_items : [];
+          let totalNum = 0;
+          let curr = '₹';
+          const itemDescs = items.map(it => {
+            const qty = parseInt(it.quantity, 10) || 1;
+            const priceNum = parseFloat(it.item_price) || 0;
+            if (it.currency) curr = it.currency === 'INR' ? '₹' : it.currency;
+            totalNum += qty * priceNum;
+            const priceStr = priceNum > 0 ? ` (${curr}${priceNum})` : '';
+            return `${qty}x ${it.product_retailer_id || 'Product'}${priceStr}`;
+          });
+          const noteStr = o.text ? `\nNote: ${o.text}` : '';
+          const totalStr = totalNum > 0 ? `\nTotal: ${curr}${totalNum.toFixed(2)}` : '';
+          const bodySummary = itemDescs.length > 0
+            ? `🛒 Order (${items.length} item${items.length === 1 ? '' : 's'}):\n` + itemDescs.map(i => `• ${i}`).join('\n') + totalStr + noteStr
+            : 'Order received';
+
+          record.message_body = bodySummary;
+          record.order_data = {
+            catalog_id: o.catalog_id || null,
+            product_items: items,
+            total_amount: totalNum,
+            currency: curr,
+            text: o.text || null,
+          };
         } else if (type === 'system' && msg.system) {
           record.message_body = msg.system.body || 'System message';
         } else if (type === 'unknown' && msg.errors) {
