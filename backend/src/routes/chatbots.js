@@ -4,15 +4,8 @@ const pool = require('../db');
 const { requirePermission } = require('../middleware/access');
 
 /**
- * Automations are linear keyword→message flows: one Keyword Trigger followed by
- * a straight chain of Send Message nodes. This collapses any saved config to
- * that shape:
- *   - keep the (single) trigger node as-is,
- *   - keep message nodes only, in graph order (DFS from the trigger; any
- *     unreachable messages appended so nothing is silently lost),
- *   - drop every other node type (condition/delay/action/handoff/ai/api/subflow),
- *   - rebuild edges as a single linear chain (trigger → msg → msg → …).
- * Idempotent and safe to run on every save and as a one-time migration.
+ * Sanitizes automation config by preserving all executable palette node types:
+ * ['trigger', 'message', 'condition', 'delay', 'action'] and their edges.
  */
 function sanitizeToLinear(config) {
   if (!config || typeof config !== 'object') return config;
@@ -20,38 +13,12 @@ function sanitizeToLinear(config) {
   const edges = Array.isArray(config.edges) ? config.edges : [];
   if (nodes.length === 0) return config;
 
-  const trigger = nodes.find(n => n && n.type === 'trigger') || null;
-  const nodeById = new Map(nodes.filter(n => n && n.id != null).map(n => [n.id, n]));
-  const adj = {};
-  for (const e of edges) {
-    if (e && e.from != null) (adj[e.from] = adj[e.from] || []).push(e.to);
-  }
+  const SUPPORTED_TYPES = new Set(['trigger', 'message', 'condition', 'delay', 'action']);
+  const keepNodes = nodes.filter(n => n && n.type && SUPPORTED_TYPES.has(n.type));
+  const validNodeIds = new Set(keepNodes.map(n => n.id));
+  const keepEdges = edges.filter(e => e && e.from != null && e.to != null && validNodeIds.has(e.from) && validNodeIds.has(e.to));
 
-  const orderedMessages = [];
-  const visited = new Set();
-  const dfs = (id) => {
-    if (id == null || visited.has(id)) return;
-    visited.add(id);
-    const n = nodeById.get(id);
-    if (n && n.type === 'message') orderedMessages.push(n);
-    for (const to of (adj[id] || [])) dfs(to);
-  };
-  dfs(trigger ? trigger.id : (nodes[0] && nodes[0].id));
-  // Append any message nodes not reachable from the trigger (preserve them).
-  for (const n of nodes) {
-    if (n && n.type === 'message' && !visited.has(n.id)) orderedMessages.push(n);
-  }
-
-  const keepNodes = [];
-  if (trigger) keepNodes.push(trigger);
-  keepNodes.push(...orderedMessages);
-
-  const newEdges = [];
-  for (let i = 0; i < keepNodes.length - 1; i++) {
-    newEdges.push({ from: keepNodes[i].id, to: keepNodes[i + 1].id, fromHandle: 'default' });
-  }
-
-  return { ...config, nodes: keepNodes, edges: newEdges };
+  return { ...config, nodes: keepNodes, edges: keepEdges };
 }
 
 // GET /chatbots — list all
