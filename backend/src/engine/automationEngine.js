@@ -864,9 +864,10 @@ async function executeMessageNode(client, executionId, node, context) {
               awaiting_node_id=$1,
               paused_at=NOW(),
               expires_at=NOW() + ($2 || ' hours')::INTERVAL,
-              wa_number=$3
-        WHERE id=$4`,
-      [node.id, String(hours), context.trigger_data?.wa_number || null, executionId]
+              wa_number=$3,
+              trigger_data=$4
+        WHERE id=$5`,
+      [node.id, String(hours), context.trigger_data?.wa_number || null, JSON.stringify(context.trigger_data || {}), executionId]
     );
     step.__pauseExecution = true;
   }
@@ -1401,8 +1402,8 @@ async function resumeAutomation(client, executionId, record) {
       conversation: record.conversation || null,
       pricing: record.pricing || null,
       errors: record.errors || null,
-      ...(prevTd.order_data ? { order_data: prevTd.order_data } : {}),
-      ...(prevTd.cart_summary ? { cart_summary: prevTd.cart_summary } : {}),
+      ...(record.order_data || prevTd.order_data ? { order_data: record.order_data || prevTd.order_data } : {}),
+      ...(record.order_data ? { cart_summary: record.message_body } : (prevTd.cart_summary ? { cart_summary: prevTd.cart_summary } : {})),
     },
   };
 
