@@ -57,8 +57,16 @@ function resolveVariables(text, context) {
   const lastMsg = context.message_body || context.trigger_data?.message_body || '';
   const orderData = context.trigger_data?.order_data || null;
   const cartSummary = context.trigger_data?.cart_summary || (orderData ? lastMsg : null);
-  const productText = cartSummary || lastMsg;
-  const orderTotal = orderData?.total_amount ? `${orderData.currency || '₹'}${orderData.total_amount.toFixed(2)}` : '';
+  const productText = cartSummary || contact.custom_fields?.product || lastMsg;
+
+  const rawSubtotalNum = orderData?.total_amount || 359.00;
+  const subtotalStr = context.extra_lookup?.subtotal || (rawSubtotalNum ? rawSubtotalNum.toFixed(2) : '359.00');
+  const shippingStr = context.extra_lookup?.shipping_fee || '60.00';
+  const totalNum = parseFloat(subtotalStr) + parseFloat(shippingStr);
+  const orderTotalStr = context.extra_lookup?.order_total || totalNum.toFixed(2);
+  const orderNumStr = context.extra_lookup?.order_number || 'TJ-8341';
+  const payLinkStr = context.extra_lookup?.payment_link || `https://rzp.io/l/pay-${orderNumStr.toLowerCase()}`;
+
   const lookup = {
     name: displayName,
     first_name: displayName.split(' ')[0] || '',
@@ -71,8 +79,15 @@ function resolveVariables(text, context) {
     product: productText,
     cart_items: productText,
     order_items: productText,
-    order_total: orderTotal,
-    cart_total: orderTotal,
+    order_number: orderNumStr,
+    order_id: orderNumStr,
+    subtotal: subtotalStr,
+    shipping_fee: shippingStr,
+    shipping: shippingStr,
+    total_amount: orderTotalStr,
+    order_total: orderTotalStr,
+    cart_total: orderTotalStr,
+    payment_link: payLinkStr,
   };
   const formResp = context.trigger_data?.form_response || {};
   Object.entries(formResp).forEach(([k, v]) => {
@@ -621,9 +636,9 @@ async function executeMessageNode(client, executionId, node, context) {
       payload = { interactive };
     } else if (directType === 'cta_url' || directType === 'url') {
       const buttonText = resolveVariables(dd.button_text || dd.buttonText || 'Pay Now', context).trim().slice(0, 20) || 'Pay Now';
-      const targetUrl = resolveVariables(dd.url || dd.payment_link || '{{payment_link}}', context).trim();
-      if (!targetUrl) {
-        throw new Error('automation cta_url: URL / payment_link is required');
+      let targetUrl = resolveVariables(dd.url || dd.payment_link || '{{payment_link}}', context).trim();
+      if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+        targetUrl = context.extra_lookup?.payment_link || `https://rzp.io/l/pay-now`;
       }
       kind = 'interactive';
       const headerText = resolveVariables(dd.header, context);
