@@ -55,6 +55,11 @@ services:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-forgechat}@forgecrm-db:5432/postgres
       REDIS_URL: redis://redis:6379
       FORGECHAT_DATA_DIR: /app/data    # persisted auto-generated secrets live here
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      SHOPIFY_STORE_DOMAIN: ${SHOPIFY_STORE_DOMAIN:-}
+      SHOPIFY_ADMIN_API_ACCESS_TOKEN: ${SHOPIFY_ADMIN_API_ACCESS_TOKEN:-}
+      GOOGLE_SHEET_WEBHOOK_URL: ${GOOGLE_SHEET_WEBHOOK_URL:-}
     env_file:
       - path: .env                     # optional advanced overrides; absent is fine
         required: false

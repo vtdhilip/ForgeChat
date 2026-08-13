@@ -50,15 +50,17 @@ async function createRazorpayPaymentLink({ amount, currency = 'INR', description
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
   if (!keyId || !keySecret) {
-    console.warn('[checkout] RAZORPAY_KEY_ID/SECRET not set — generating test link');
+    console.warn('[checkout] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not found in process.env');
     return {
       id: `plink_test_${Date.now()}`,
       short_url: `https://rzp.io/l/pay-${orderNumber.toLowerCase()}`,
     };
   }
 
+  console.log(`[checkout] Creating Razorpay Payment Link for ${orderNumber} (amount: ₹${amount}) using keyId: ${keyId.slice(0, 8)}...`);
+
   try {
-    const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    const authHeader = 'Basic ' + Buffer.from(`${keyId.trim()}:${keySecret.trim()}`).toString('base64');
     const amountInPaise = Math.round(parseFloat(amount) * 100);
 
     let cleanPhone = String(contactNumber || '').replace(/\D/g, '');
@@ -96,6 +98,7 @@ async function createRazorpayPaymentLink({ amount, currency = 'INR', description
       };
     }
 
+    console.log(`[checkout] Live Razorpay Link created successfully: ${data.short_url} (ID: ${data.id})`);
     return {
       id: data.id,
       short_url: data.short_url,
