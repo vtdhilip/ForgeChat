@@ -316,7 +316,7 @@ router.post('/webhook/whatsapp', async (req, res) => {
     const payloads = Array.isArray(payload) ? payload : [payload];
     const allRecords = [];
     for (const p of payloads) {
-      const records = parseMetaPayload(p);
+      const records = await parseMetaPayload(p);
       allRecords.push(...records);
     }
 
