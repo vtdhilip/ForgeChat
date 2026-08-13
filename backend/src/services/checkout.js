@@ -204,6 +204,7 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
       const p = parseFloat(it.item_price) || 0;
       subtotal += q * p;
     });
+  }
   if (subtotal === 0) {
     // Safety fallback: try parsing Total: ₹xxx from string text if orderData object was omitted
     const textTarget = JSON.stringify(orderData || {}) + ' ' + (deliveryAddress || '');
