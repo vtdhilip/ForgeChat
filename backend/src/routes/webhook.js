@@ -151,12 +151,16 @@ async function parseMetaPayload(body) {
           const o = msg.order;
           const items = Array.isArray(o.product_items) ? o.product_items : [];
           let totalNum = 0;
-          let curr = '₹';
+          let curr = '₹';           // symbol used only for display text
+          let currCode = 'INR';     // ISO code sent to Razorpay & stored in order_data
           const itemDescs = [];
           for (const it of items) {
             const qty = parseInt(it.quantity, 10) || 1;
             const priceNum = parseFloat(it.item_price) || 0;
-            if (it.currency) curr = it.currency === 'INR' ? '₹' : it.currency;
+            if (it.currency) {
+              currCode = it.currency;                          // keep raw ISO code
+              curr = it.currency === 'INR' ? '₹' : it.currency; // symbol for display
+            }
             totalNum += qty * priceNum;
             const priceStr = priceNum > 0 ? ` (${curr}${priceNum})` : '';
             const pName = it.name || it.title || it.product_name || (await resolveProductName(it.product_retailer_id));
@@ -173,7 +177,7 @@ async function parseMetaPayload(body) {
             catalog_id: o.catalog_id || null,
             product_items: items,
             total_amount: totalNum,
-            currency: curr,
+            currency: currCode,   // "INR" — ISO code for Razorpay
             text: o.text || null,
           };
         } else if (type === 'system' && msg.system) {
