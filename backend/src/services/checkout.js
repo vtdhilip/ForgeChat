@@ -246,15 +246,25 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
     console.error('[checkout] Order DB insert error:', dbErr.message);
   }
 
-  return {
+  const result = {
     order_number: orderNumber,
+    contact_name: contactName,
+    contact_number: contactNumber,
+    delivery_address: deliveryAddress,
+    items: JSON.stringify(rawItems),
     subtotal: subtotal.toFixed(2),
     shipping_fee: shipping.toFixed(2),
     total_amount: totalAmount.toFixed(2),
     payment_link: rzpLink.short_url,
     shopify_draft_order_id: shopifyDraft?.id || null,
     order_id: orderNumber,
+    status: 'unpaid',
   };
+
+  const { appendOrderToGoogleSheet } = require('./googleSheets');
+  appendOrderToGoogleSheet(result).catch(err => console.error('[checkout] Google Sheet sync error:', err.message));
+
+  return result;
 }
 
 module.exports = {
