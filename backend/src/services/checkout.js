@@ -215,6 +215,9 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
   }
   if (subtotal === 0) subtotal = 510.00; // Fallback demo price if not set
 
+  console.log(`[checkout] processOrderCheckout: orderData=${JSON.stringify(orderData)}`);
+  console.log(`[checkout] rawItems count=${rawItems.length}, total_amount=${orderData?.total_amount}, subtotal after calc=${subtotal}`);
+
   const shipping = parseFloat(shippingFee) || 60.00;
   const totalAmount = subtotal + shipping;
   const currency = orderData?.currency || 'INR';

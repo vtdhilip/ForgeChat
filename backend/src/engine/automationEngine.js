@@ -1379,7 +1379,11 @@ async function resumeAutomation(client, executionId, record) {
   const nodes = config.nodes || [];
   const edges = config.edges || [];
 
-  const prevTd = execRow.trigger_data || {};
+  let prevTd = execRow.trigger_data || {};
+  // Postgres JSONB returns a parsed object, but TEXT/VARCHAR columns return a string
+  if (typeof prevTd === 'string') {
+    try { prevTd = JSON.parse(prevTd); } catch (e) { prevTd = {}; }
+  }
   // Build context from the fresh inbound record (mirrors evaluateTriggers)
   const context = {
     contact_number: record.contact_number,
