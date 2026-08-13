@@ -18,6 +18,7 @@ const crypto = require('crypto');
 const pool = require('../db');
 const { enqueueSend } = require('../queue/sendQueue');
 const { getAccountWithToken } = require('./whatsappAccounts');
+const { updateOrderPaymentInGoogleSheet } = require('../services/googleSheets');
 
 const router = Router();
 
@@ -144,6 +145,11 @@ router.post('/', async (req, res) => {
       const order = rows[0];
       console.log(`[razorpay-webhook] Order ${order.order_number} marked PAID (payment: ${paymentId})`);
 
+      // Update Google Sheet status to PAID
+      updateOrderPaymentInGoogleSheet(order.order_number, 'paid', paymentId).catch(sheetErr => {
+        console.error('[razorpay-webhook] Google Sheet update error:', sheetErr.message);
+      });
+
       // Send WhatsApp confirmation
       if (order.wa_number && order.contact_number) {
         await sendWhatsAppConfirmation({
@@ -167,12 +173,20 @@ router.post('/', async (req, res) => {
     const pl = event?.payload?.payment_link?.entity || {};
     const paymentLinkId = pl.id;
     if (paymentLinkId) {
-      await pool.query(
+      const newStatus = eventType === 'payment_link.cancelled' ? 'cancelled' : 'expired';
+      const { rows } = await pool.query(
         `UPDATE coexistence.orders
             SET status = $1, updated_at = NOW()
-          WHERE razorpay_payment_link_id = $2 AND status = 'unpaid'`,
-        [eventType === 'payment_link.cancelled' ? 'cancelled' : 'expired', paymentLinkId]
-      ).catch(err => console.error('[razorpay-webhook] status update error:', err.message));
+          WHERE razorpay_payment_link_id = $2 AND status = 'unpaid'
+          RETURNING order_number`,
+        [newStatus, paymentLinkId]
+      ).catch(err => {
+        console.error('[razorpay-webhook] status update error:', err.message);
+        return { rows: [] };
+      });
+      if (rows && rows.length > 0) {
+        updateOrderPaymentInGoogleSheet(rows[0].order_number, newStatus).catch(() => {});
+      }
       console.log(`[razorpay-webhook] Order with link ${paymentLinkId} marked ${eventType}`);
     }
     return res.status(200).json({ status: 'ok' });

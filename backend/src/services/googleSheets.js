@@ -67,7 +67,12 @@ async function updateOrderPaymentInGoogleSheet(orderNumber, status = 'paid', pay
       body: JSON.stringify(payload),
     });
 
-    return res.ok;
+    if (res.ok) {
+      console.log(`[googleSheets] Order #${orderNumber} status updated to ${status.toUpperCase()} in Google Sheet!`);
+      return true;
+    } else {
+      console.warn(`[googleSheets] Google Sheet status update returned HTTP ${res.status}`);
+    }
   } catch (err) {
     console.error('[googleSheets] Error updating order status in Google Sheet:', err.message);
   }
