@@ -117,8 +117,27 @@ async function parseMetaPayload(body) {
           const names = msg.contacts.map(c => c.name?.formatted_name || c.name?.first_name || 'Contact').join(', ');
           record.message_body = `Shared contact(s): ${names}`;
         } else if (type === 'interactive' && msg.interactive) {
-          const reply = msg.interactive.button_reply || msg.interactive.list_reply || {};
-          record.message_body = reply.title || 'Interactive response';
+          const inter = msg.interactive;
+          if (inter.type === 'nfm_reply' && inter.nfm_reply) {
+            try {
+              const resp = JSON.parse(inter.nfm_reply.response_json || '{}');
+              const addrParts = [
+                resp.house_no || resp.address1 || resp.building || resp.door_no,
+                resp.street || resp.address2 || resp.area,
+                resp.city,
+                resp.state,
+                resp.pincode || resp.postal_code || resp.zip,
+              ].filter(Boolean);
+              const formattedAddr = addrParts.length > 0 ? addrParts.join(', ') : (inter.nfm_reply.body || 'Form submitted');
+              record.message_body = formattedAddr;
+              record.form_response = resp;
+            } catch {
+              record.message_body = inter.nfm_reply.body || 'Form submitted';
+            }
+          } else {
+            const reply = inter.button_reply || inter.list_reply || {};
+            record.message_body = reply.title || 'Interactive response';
+          }
           record.message_type = 'interactive';
         } else if (type === 'reaction' && msg.reaction) {
           record.message_body = `Reaction: ${msg.reaction.emoji || ''}`;

@@ -72,6 +72,14 @@ function resolveVariables(text, context) {
     order_total: orderTotal,
     cart_total: orderTotal,
   };
+  const formResp = context.trigger_data?.form_response || {};
+  Object.entries(formResp).forEach(([k, v]) => {
+    const sval = _stringifyForInterpolation(v);
+    const lk = String(k).toLowerCase();
+    const nkKey = fieldVarKey(k);
+    if (lookup[lk] === undefined || lookup[lk] === '') lookup[lk] = sval;
+    if (nkKey && (lookup[nkKey] === undefined || lookup[nkKey] === '')) lookup[nk] = sval;
+  });
   // Map field id -> name so DB-loaded custom_fields (keyed by id, e.g. cf-city)
   // can be referenced by their normalized field name (e.g. {{city}}).
   const nameById = {};
