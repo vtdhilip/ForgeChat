@@ -567,6 +567,7 @@ const DIRECT_MSG_TYPES = [
   { key:"catalog",     label:"Catalog Message",   fields:["body","catalog_id"] },
   { key:"quick_reply", label:"Quick Reply",       fields:["body","buttons"] },
   { key:"list",        label:"List Message",      fields:["body","button_text","sections"] },
+  { key:"cta_url",     label:"Payment / URL Button", fields:["header","body","button_text","url"] },
   { key:"dynamic_api", label:"Dynamic API Msg",   fields:["endpoint","method","headers","body"] },
 ];
 const DIRECT_MSG_LABELS = Object.fromEntries(DIRECT_MSG_TYPES.map(t => [t.key, t.label]));
@@ -1246,6 +1247,13 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
           return <>
             <Field label="Body text"><Textarea value={dd.body || ""} onChange={e=>setDirect({body:e.target.value})} placeholder="Message text before catalog…" style={{ fontSize:11 }}/></Field>
             <Field label="Catalog ID"><Input value={dd.catalog_id || ""} onChange={e=>setDirect({catalog_id:e.target.value})} placeholder="Catalog ID from Meta" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
+          </>;
+        case "cta_url":
+          return <>
+            <Field label="Header text (optional)" hint="Appears bold at top (e.g. Order #TJ-8341)"><VarInput value={dd.header || ""} onChange={e=>setDirect({header:e.target.value})} placeholder="Order #{{order_number}}" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
+            <Field label="Body text" hint="Main message text with line items, subtotal, shipping, and total."><FormatTextarea value={dd.body || ""} onChange={e=>setDirect({body:e.target.value})} placeholder={"1x {{product}}\n\nSubtotal: ₹{{subtotal}}\nShipping: ₹{{shipping_fee}}\n\nTotal: ₹{{order_total}}\n\nPlease complete your payment to confirm."} style={{ fontSize:11, minHeight:110 }}/></Field>
+            <Field label="Button text" hint="Text displayed on the button (e.g. Pay Now)"><VarInput value={dd.button_text || ""} onChange={e=>setDirect({button_text:e.target.value})} placeholder="Pay Now" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
+            <Field label="Target URL / Link" hint="URL opened on click (e.g. {{payment_link}})"><VarInput value={dd.url || ""} onChange={e=>setDirect({url:e.target.value})} placeholder="{{payment_link}}" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
           </>;
         case "quick_reply":
           return <>

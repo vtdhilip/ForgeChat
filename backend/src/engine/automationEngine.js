@@ -577,6 +577,29 @@ async function executeMessageNode(client, executionId, node, context) {
         interactive.header = { type: 'text', text: String(headerText).slice(0, 60) };
       }
       payload = { interactive };
+    } else if (directType === 'cta_url' || directType === 'url') {
+      const buttonText = resolveVariables(dd.button_text || dd.buttonText || 'Pay Now', context).trim().slice(0, 20) || 'Pay Now';
+      const targetUrl = resolveVariables(dd.url || dd.payment_link || '{{payment_link}}', context).trim();
+      if (!targetUrl) {
+        throw new Error('automation cta_url: URL / payment_link is required');
+      }
+      kind = 'interactive';
+      const headerText = resolveVariables(dd.header, context);
+      const interactive = {
+        type: 'cta_url',
+        body: { text: resolvedBody || '' },
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: buttonText,
+            url: targetUrl,
+          },
+        },
+      };
+      if (headerText && headerText.trim()) {
+        interactive.header = { type: 'text', text: String(headerText).slice(0, 60) };
+      }
+      payload = { interactive };
     } else if (directType === 'location') {
       const lat = String(dd.latitude ?? '').trim();
       const lon = String(dd.longitude ?? '').trim();
