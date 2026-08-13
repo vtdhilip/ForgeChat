@@ -31,7 +31,9 @@ function normalizePhone(s) {
   return String(s).replace(/\D/g, '');
 }
 
-function parseMetaPayload(body) {
+const { resolveProductName } = require('../services/productCatalog');
+
+async function parseMetaPayload(body) {
   const records = [];
 
   if (!body || body.object !== 'whatsapp_business_account') {
@@ -58,7 +60,7 @@ function parseMetaPayload(body) {
       });
 
       // Parse a single message (shared logic for incoming and outgoing)
-      function parseMessage(msg, direction, waNum, contactNum) {
+      async function parseMessage(msg, direction, waNum, contactNum) {
         const record = {
           message_id: msg.id || '',
           phone_number_id: phoneNumberId,
@@ -76,9 +78,6 @@ function parseMetaPayload(body) {
             ? new Date(parseInt(msg.timestamp, 10) * 1000).toISOString()
             : new Date().toISOString(),
           contact_name: contactProfiles[contactNum] || null,
-          // Quote-reply: when the customer replies to a specific message, Meta
-          // sends the quoted message's wamid here. Stored so we can render the
-          // quoted bubble above their reply.
           context_message_id: msg.context?.id || null,
         };
 
@@ -124,9 +123,6 @@ function parseMetaPayload(body) {
         } else if (type === 'reaction' && msg.reaction) {
           record.message_body = `Reaction: ${msg.reaction.emoji || ''}`;
           record.message_type = 'reaction';
-          // Capture the target message + emoji so the insert loop can attach it
-          // to that message instead of creating a standalone bubble. Empty emoji
-          // = the customer removed their reaction.
           record.reaction = {
             targetMessageId: msg.reaction.message_id || null,
             emoji: msg.reaction.emoji || '',
@@ -137,14 +133,16 @@ function parseMetaPayload(body) {
           const items = Array.isArray(o.product_items) ? o.product_items : [];
           let totalNum = 0;
           let curr = '₹';
-          const itemDescs = items.map(it => {
+          const itemDescs = [];
+          for (const it of items) {
             const qty = parseInt(it.quantity, 10) || 1;
             const priceNum = parseFloat(it.item_price) || 0;
             if (it.currency) curr = it.currency === 'INR' ? '₹' : it.currency;
             totalNum += qty * priceNum;
             const priceStr = priceNum > 0 ? ` (${curr}${priceNum})` : '';
-            return `${qty}x ${it.product_retailer_id || 'Product'}${priceStr}`;
-          });
+            const pName = it.name || it.title || it.product_name || (await resolveProductName(it.product_retailer_id));
+            itemDescs.push(`${qty}x ${pName}${priceStr}`);
+          }
           const noteStr = o.text ? `\nNote: ${o.text}` : '';
           const totalStr = totalNum > 0 ? `\nTotal: ${curr}${totalNum.toFixed(2)}` : '';
           const bodySummary = itemDescs.length > 0
@@ -172,14 +170,13 @@ function parseMetaPayload(body) {
       // Incoming messages
       const messages = value.messages || [];
       for (const msg of messages) {
-        records.push(parseMessage(msg, 'incoming', displayPhoneNumber, msg.from));
+        records.push(await parseMessage(msg, 'incoming', displayPhoneNumber, msg.from));
       }
 
       // Outgoing message echoes (messages sent from the WhatsApp Business app)
       const messageEchoes = value.message_echoes || [];
       for (const msg of messageEchoes) {
-        // For echoes: from = business number, to = customer
-        records.push(parseMessage(msg, 'outgoing', displayPhoneNumber, msg.to));
+        records.push(await parseMessage(msg, 'outgoing', displayPhoneNumber, msg.to));
       }
 
       // Status updates (delivered, read, sent)
