@@ -24,16 +24,33 @@ const router = Router();
 
 // ─── Signature Verification ─────────────────────────────────────────────────
 function verifyRazorpaySignature(rawBody, signature, secret) {
-  if (!secret || !signature) return false;
+  if (!secret || !signature) {
+    console.warn(`[razorpay-webhook] Missing secret (${!!secret}) or signature (${!!signature})`);
+    return false;
+  }
   try {
+    const cleanSecret = String(secret).trim().replace(/^["']|["']$/g, '');
+    const cleanSig = String(signature).trim();
+    const bodyBuffer = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody), 'utf8');
+
     const expected = crypto
-      .createHmac('sha256', secret)
-      .update(rawBody)
+      .createHmac('sha256', cleanSecret)
+      .update(bodyBuffer)
       .digest('hex');
-    const expectedBuf = Buffer.from(expected);
-    const signatureBuf = Buffer.from(signature);
-    if (expectedBuf.length !== signatureBuf.length) return false;
-    return crypto.timingSafeEqual(expectedBuf, signatureBuf);
+
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const signatureBuf = Buffer.from(cleanSig, 'utf8');
+
+    if (expectedBuf.length !== signatureBuf.length) {
+      console.warn(`[razorpay-webhook] Signature length mismatch (expected: ${expectedBuf.length}, received: ${signatureBuf.length})`);
+      return false;
+    }
+
+    const isValid = crypto.timingSafeEqual(expectedBuf, signatureBuf);
+    if (!isValid) {
+      console.warn(`[razorpay-webhook] Signature mismatch! Please check RAZORPAY_WEBHOOK_SECRET in .env against Razorpay Dashboard.`);
+    }
+    return isValid;
   } catch (err) {
     console.error('[razorpay-webhook] Signature verification error:', err.message);
     return false;
@@ -96,18 +113,18 @@ async function sendWhatsAppConfirmation({ waNumber, contactNumber, orderNumber, 
 router.post('/', async (req, res) => {
   const rawBody = req.rawBody || JSON.stringify(req.body);
   const signature = req.headers['x-razorpay-signature'] || '';
-  const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim();
+  const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET || '').trim().replace(/^["']|["']$/g, '');
 
-  console.log(`[razorpay-webhook] Inbound request received from ${req.ip}`);
+  console.log(`[razorpay-webhook] Inbound request from ${req.ip} (hasSignature=${!!signature}, hasSecret=${!!webhookSecret})`);
 
   // Verify signature if secret is configured
   if (webhookSecret) {
     if (!verifyRazorpaySignature(rawBody, signature, webhookSecret)) {
-      console.warn('[razorpay-webhook] Signature verification failed!');
+      console.warn('[razorpay-webhook] Signature verification failed — rejecting request');
       return res.status(400).json({ error: 'Invalid signature' });
     }
   } else {
-    console.log('[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET not set in .env — accepting request');
+    console.log('[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET not set in .env — accepting request without verification');
   }
 
   let event;
