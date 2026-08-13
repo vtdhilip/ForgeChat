@@ -48,7 +48,8 @@ function verifyRazorpaySignature(rawBody, signature, secret) {
 
     const isValid = crypto.timingSafeEqual(expectedBuf, signatureBuf);
     if (!isValid) {
-      console.warn(`[razorpay-webhook] Signature mismatch! Please check RAZORPAY_WEBHOOK_SECRET in .env against Razorpay Dashboard.`);
+      const masked = cleanSecret.length > 4 ? `${cleanSecret.slice(0, 3)}...${cleanSecret.slice(-2)}` : '***';
+      console.warn(`[razorpay-webhook] Signature mismatch! The secret in .env (${masked}, len: ${cleanSecret.length}) does not match what is set in Razorpay Dashboard.`);
     }
     return isValid;
   } catch (err) {
