@@ -56,6 +56,8 @@ function resolveVariables(text, context) {
   const displayName = contact.name || contact.profile_name || '';
   const lastMsg = context.message_body || context.trigger_data?.message_body || '';
   const orderData = context.trigger_data?.order_data || null;
+  const cartSummary = context.trigger_data?.cart_summary || (orderData ? lastMsg : null);
+  const productText = cartSummary || lastMsg;
   const orderTotal = orderData?.total_amount ? `${orderData.currency || '₹'}${orderData.total_amount.toFixed(2)}` : '';
   const lookup = {
     name: displayName,
@@ -66,9 +68,9 @@ function resolveVariables(text, context) {
     last_message: lastMsg,
     last_input: lastMsg,
     user_message: lastMsg,
-    product: lastMsg,
-    cart_items: lastMsg,
-    order_items: lastMsg,
+    product: productText,
+    cart_items: productText,
+    order_items: productText,
     order_total: orderTotal,
     cart_total: orderTotal,
   };
@@ -1325,6 +1327,7 @@ async function resumeAutomation(client, executionId, record) {
   const nodes = config.nodes || [];
   const edges = config.edges || [];
 
+  const prevTd = execRow.trigger_data || {};
   // Build context from the fresh inbound record (mirrors evaluateTriggers)
   const context = {
     contact_number: record.contact_number,
@@ -1342,6 +1345,8 @@ async function resumeAutomation(client, executionId, record) {
       conversation: record.conversation || null,
       pricing: record.pricing || null,
       errors: record.errors || null,
+      ...(prevTd.order_data ? { order_data: prevTd.order_data } : {}),
+      ...(prevTd.cart_summary ? { cart_summary: prevTd.cart_summary } : {}),
     },
   };
 
@@ -1453,6 +1458,7 @@ async function evaluateTriggers(messageRecord) {
         conversation: messageRecord.conversation || null,
         pricing: messageRecord.pricing || null,
         errors: messageRecord.errors || null,
+        ...(messageRecord.order_data ? { order_data: messageRecord.order_data, cart_summary: messageRecord.message_body } : {}),
       },
     };
 
