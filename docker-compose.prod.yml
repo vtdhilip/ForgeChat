@@ -16,6 +16,9 @@ services:
   forgecrm-backend:
     environment:
       CORS_ORIGIN: https://${DOMAIN:?Set DOMAIN, e.g. DOMAIN=chat.example.com}
+    env_file:
+      - path: .env
+        required: false
 
   # Stop publishing the plain-HTTP dev port; Caddy is the only public entrypoint.
   forgecrm-frontend:

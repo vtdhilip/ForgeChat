@@ -61,14 +61,17 @@ async function createRazorpayPaymentLink({ amount, currency = 'INR', description
     const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
     const amountInPaise = Math.round(parseFloat(amount) * 100);
 
+    let cleanPhone = String(contactNumber || '').replace(/\D/g, '');
+    if (cleanPhone.length > 10) cleanPhone = cleanPhone.slice(-10);
+
     const bodyData = {
       amount: amountInPaise,
       currency: currency || 'INR',
       accept_partial: false,
-      description: description || `Payment for Order #${orderNumber}`,
+      description: (description || `Payment for Order #${orderNumber}`).slice(0, 2048),
       customer: {
-        name: customerName || 'WhatsApp Customer',
-        contact: contactNumber ? String(contactNumber).replace(/\D/g, '') : '',
+        name: (customerName || 'WhatsApp Customer').slice(0, 255),
+        contact: cleanPhone.length === 10 ? cleanPhone : undefined,
       },
       notify: { sms: false, email: false },
       reminder_enable: true,
@@ -86,7 +89,7 @@ async function createRazorpayPaymentLink({ amount, currency = 'INR', description
 
     const data = await res.json();
     if (!res.ok) {
-      console.error('[checkout] Razorpay link creation error:', data);
+      console.error('[checkout] Razorpay payment link error response:', JSON.stringify(data));
       return {
         id: `plink_err_${Date.now()}`,
         short_url: `https://rzp.io/l/pay-${orderNumber.toLowerCase()}`,
