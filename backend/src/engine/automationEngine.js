@@ -635,21 +635,27 @@ async function executeMessageNode(client, executionId, node, context) {
       }
       payload = { interactive };
     } else if (directType === 'cta_url' || directType === 'url') {
-      const buttonText = resolveVariables(dd.button_text || dd.buttonText || 'Pay Now', context).trim().slice(0, 20) || 'Pay Now';
       let targetUrl = resolveVariables(dd.url || dd.payment_link || '{{payment_link}}', context).trim();
       if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
-        targetUrl = context.extra_lookup?.payment_link || `https://rzp.io/l/pay-now`;
+        targetUrl = context.extra_lookup?.payment_link || '';
       }
-      kind = 'interactive';
+      const buttonText = resolveVariables(dd.button_text || dd.buttonText || 'Pay Now', context).trim().slice(0, 20) || 'Pay Now';
       const headerText = resolveVariables(dd.header, context);
+
+      // Always append the raw URL to the body so it's tappable even if the
+      // CTA button domain isn't whitelisted in Meta Business Manager.
+      const bodyWithLink = (resolvedBody || '').trimEnd()
+        + (targetUrl ? `\n\n👉 ${targetUrl}` : '');
+
+      kind = 'interactive';
       const interactive = {
         type: 'cta_url',
-        body: { text: resolvedBody || '' },
+        body: { text: bodyWithLink },
         action: {
           name: 'cta_url',
           parameters: {
             display_text: buttonText,
-            url: targetUrl,
+            url: targetUrl || 'https://rzp.io',
           },
         },
       };
