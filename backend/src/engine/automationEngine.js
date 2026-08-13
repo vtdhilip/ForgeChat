@@ -54,11 +54,16 @@ function resolveVariables(text, context) {
   // name so greetings still render for contacts we haven't formally captured.
   // (Conditions use the RAW captured name via getFieldValue — see below.)
   const displayName = contact.name || contact.profile_name || '';
+  const lastMsg = context.message_body || context.trigger_data?.message_body || '';
   const lookup = {
     name: displayName,
     first_name: displayName.split(' ')[0] || '',
     contact_number: contact.contact_number || context.contact_number || '',
     phone: contact.contact_number || context.contact_number || '',
+    message: lastMsg,
+    last_message: lastMsg,
+    last_input: lastMsg,
+    user_message: lastMsg,
   };
   // Map field id -> name so DB-loaded custom_fields (keyed by id, e.g. cf-city)
   // can be referenced by their normalized field name (e.g. {{city}}).
@@ -67,21 +72,30 @@ function resolveVariables(text, context) {
   Object.entries(contact.custom_fields || {}).forEach(([k, v]) => {
     const sval = _stringifyForInterpolation(v);
     const lk = String(k).toLowerCase();
+    const nkKey = fieldVarKey(k);
     // Built-ins win over custom fields with the same key, so AI extractions
     // can't clobber the canonical contact data.
     if (lookup[lk] === undefined || lookup[lk] === '') {
       lookup[lk] = sval;
+    }
+    if (nkKey && (lookup[nkKey] === undefined || lookup[nkKey] === '')) {
+      lookup[nkKey] = sval;
     }
     // Also register under the field's normalized name when the key is a field id.
     const fname = nameById[k];
     if (fname) {
       const nk = fieldVarKey(fname);
       if (nk && (lookup[nk] === undefined || lookup[nk] === '')) lookup[nk] = sval;
+      const flk = String(fname).toLowerCase();
+      if (flk && (lookup[flk] === undefined || lookup[flk] === '')) lookup[flk] = sval;
     }
   });
   return String(text).replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, key) => {
     const lk = key.toLowerCase();
-    return Object.prototype.hasOwnProperty.call(lookup, lk) ? lookup[lk] : match;
+    const nk = fieldVarKey(key);
+    if (Object.prototype.hasOwnProperty.call(lookup, lk)) return lookup[lk];
+    if (nk && Object.prototype.hasOwnProperty.call(lookup, nk)) return lookup[nk];
+    return match;
   });
 }
 
@@ -945,12 +959,38 @@ async function executeActionNode(client, executionId, node, context) {
         const rawVal    = ix >= 0 ? raw.slice(ix + 1).trim() : '';
         if (!fieldName) { results.push({ ...base, status: 'error', error: 'no field selected' }); stepStatus = 'error'; continue; }
         if (!waNumber || !contactNumber) { results.push({ ...base, status: 'error', error: 'context missing wa_number or contact_number' }); stepStatus = 'error'; continue; }
+        
+        // Flexible field definition matching: exact name, lowercase, or normalized underscore/space
         const { rows: fRows } = await client.query(
-          `SELECT id, name FROM coexistence.contact_field_definitions WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+          `SELECT id, name FROM coexistence.contact_field_definitions
+            WHERE LOWER(name) = LOWER($1)
+               OR LOWER(REPLACE(name, ' ', '_')) = LOWER(REPLACE($1, ' ', '_'))
+               OR LOWER(REPLACE(name, '_', ' ')) = LOWER(REPLACE($1, '_', ' '))
+            LIMIT 1`,
           [fieldName]
         );
-        if (fRows.length === 0) { results.push({ ...base, status: 'error', error: `custom field "${fieldName}" not found` }); stepStatus = 'error'; continue; }
-        const fieldId = fRows[0].id;
+        
+        let fieldId, resolvedName;
+        if (fRows.length > 0) {
+          fieldId = fRows[0].id;
+          resolvedName = fRows[0].name;
+        } else {
+          // Auto-create field definition if it doesn't exist yet
+          const genKey = fieldVarKey(fieldName) || 'custom_field';
+          const generatedId = `cf-${genKey}`;
+          const { rows: newFd } = await client.query(
+            `INSERT INTO coexistence.contact_field_definitions (id, name, field_type, sort_order)
+             VALUES ($1, $2, 'text', 0)
+             ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+             RETURNING id, name`,
+            [generatedId, fieldName]
+          );
+          fieldId = newFd[0].id;
+          resolvedName = newFd[0].name;
+          if (!context.field_defs) context.field_defs = [];
+          context.field_defs.push({ id: fieldId, name: resolvedName });
+        }
+
         const value = resolveVariables(rawVal, context);
         const { rows: cur } = await client.query(
           `SELECT custom_fields FROM coexistence.contacts WHERE wa_number = $1 AND contact_number = $2`,
@@ -958,6 +998,9 @@ async function executeActionNode(client, executionId, node, context) {
         );
         const cf = { ...((cur[0] && cur[0].custom_fields) || {}) };
         cf[fieldId] = value;
+        const nkKey = fieldVarKey(fieldName);
+        if (nkKey) cf[nkKey] = value;
+
         await client.query(
           `INSERT INTO coexistence.contacts (wa_number, contact_number, custom_fields, updated_at)
            VALUES ($1, $2, $3::jsonb, NOW())
@@ -968,7 +1011,7 @@ async function executeActionNode(client, executionId, node, context) {
         context.contact = context.contact || {};
         context.contact.custom_fields = cf;
         contactMutated = true;
-        results.push({ ...base, status: 'applied', field: { id: fieldId, name: fRows[0].name }, value, note: 'Custom field set' });
+        results.push({ ...base, status: 'applied', field: { id: fieldId, name: resolvedName }, value, note: 'Custom field set' });
 
       } else if (a.kind === 'Clear Custom Field') {
         const fieldName = String(a.value || '').trim();
