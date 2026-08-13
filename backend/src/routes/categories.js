@@ -170,4 +170,22 @@ router.delete('/tags/:id', requirePermission('admin-settings:tags'), async (req,
   }
 });
 
+// POST /api/products/sync-shopify — trigger Shopify catalog product title sync
+const { syncProductsFromShopify } = require('../services/productCatalog');
+router.post('/products/sync-shopify', async (req, res) => {
+  try {
+    const { domain, accessToken } = req.body || {};
+    const targetDomain = domain || process.env.SHOPIFY_STORE_DOMAIN;
+    const token = accessToken || process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN;
+    if (!targetDomain) {
+      return res.status(400).json({ error: 'Shopify domain is required (e.g. your-shop.myshopify.com)' });
+    }
+    const count = await syncProductsFromShopify(targetDomain, token);
+    res.json({ ok: true, domain: targetDomain, syncedVariants: count });
+  } catch (err) {
+    console.error('[products] sync error:', err.message);
+    res.status(500).json({ error: 'Failed to sync Shopify products' });
+  }
+});
+
 module.exports = { router };
