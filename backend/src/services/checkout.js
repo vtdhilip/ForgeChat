@@ -46,8 +46,8 @@ function generateOrderNumber() {
  * Create a live Razorpay Payment Link using Razorpay API
  */
 async function createRazorpayPaymentLink({ amount, currency = 'INR', description, customerName, contactNumber, orderNumber }) {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const keyId = (process.env.RAZORPAY_KEY_ID || '').trim().replace(/^["']|["']$/g, '');
+  const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim().replace(/^["']|["']$/g, '');
 
   if (!keyId || !keySecret) {
     console.warn('[checkout] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not found in process.env');
@@ -60,7 +60,7 @@ async function createRazorpayPaymentLink({ amount, currency = 'INR', description
   console.log(`[checkout] Creating Razorpay Payment Link for ${orderNumber} (amount: ₹${amount}) using keyId: ${keyId.slice(0, 8)}...`);
 
   try {
-    const authHeader = 'Basic ' + Buffer.from(`${keyId.trim()}:${keySecret.trim()}`).toString('base64');
+    const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
     const amountInPaise = Math.round(parseFloat(amount) * 100);
 
     let cleanPhone = String(contactNumber || '').replace(/\D/g, '');
@@ -89,9 +89,16 @@ async function createRazorpayPaymentLink({ amount, currency = 'INR', description
       body: JSON.stringify(bodyData),
     });
 
-    const data = await res.json();
+    const rawText = await res.text();
+    let data = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch (parseErr) {
+      console.error('[checkout] Razorpay non-JSON response:', rawText);
+    }
+
     if (!res.ok) {
-      console.error('[checkout] Razorpay payment link error response:', JSON.stringify(data));
+      console.error(`[checkout] Razorpay API error (HTTP ${res.status}):`, JSON.stringify(data || rawText));
       return {
         id: `plink_err_${Date.now()}`,
         short_url: `https://rzp.io/l/pay-${orderNumber.toLowerCase()}`,
@@ -159,8 +166,11 @@ async function createShopifyDraftOrder({ lineItems, customerName, contactNumber,
       body: JSON.stringify(draftOrderPayload),
     });
 
+    const rawText = await res.text();
+    let data = {};
+    try { data = rawText ? JSON.parse(rawText) : {}; } catch (e) { /* ignore */ }
+
     if (res.ok) {
-      const data = await res.json();
       return {
         id: String(data.draft_order?.id || ''),
         name: data.draft_order?.name || `#${orderNumber}`,
