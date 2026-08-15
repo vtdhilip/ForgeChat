@@ -129,8 +129,10 @@ app.use('/api', webhookRouter);
 app.use('/api/razorpay/webhook', razorpayWebhookRouter);
 // Order fulfillment & shipping status webhook (from Google Sheets / external)
 app.use('/api/orders', orderStatusWebhookRouter);
-// Shiprocket automated tracking & shipping updates webhook
+// Shiprocket automated tracking & shipping updates webhook (with clean aliases)
 app.use('/api/shiprocket/webhook', shiprocketWebhookRouter);
+app.use('/api/logistics/webhook', shiprocketWebhookRouter);
+app.use('/api/tracking/webhook', shiprocketWebhookRouter);
 // Google OAuth callback is public: Google redirects the user's browser back
 // here, and we re-derive the user from the signed `state` param (see
 // routes/googleIntegrations.js). Everything else under /google-integrations is
