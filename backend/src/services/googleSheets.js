@@ -1,5 +1,25 @@
 const pool = require('../db');
 
+function formatProductItems(product, items) {
+  if (product && typeof product === 'string' && !product.trim().startsWith('[')) {
+    return product;
+  }
+  let raw = items || product;
+  if (!raw) return '1x LINNDEN Premium Modal Trunks';
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch { return raw; }
+  }
+  if (Array.isArray(raw) && raw.length > 0) {
+    return raw.map(it => {
+      const qty = parseInt(it.quantity, 10) || 1;
+      const name = it.title || it.name || it.product_name || 'LINNDEN Premium Modal Trunks';
+      const price = it.item_price || it.price ? ` (₹${it.item_price || it.price})` : '';
+      return `${qty}x ${name}${price}`;
+    }).join(', ');
+  }
+  return '1x LINNDEN Premium Modal Trunks';
+}
+
 /**
  * Appends a new order row to Google Sheets via Google Apps Script Webhook or direct HTTP webhook.
  */
@@ -17,7 +37,7 @@ async function appendOrderToGoogleSheet(order) {
       order_number: order.order_number || order.order_id || '',
       customer_name: order.contact_name || order.name || 'WhatsApp Customer',
       phone: order.contact_number || order.phone || '',
-      product_items: order.product || order.order_items || order.items || '',
+      product_items: formatProductItems(order.product, order.items),
       subtotal: order.subtotal || '0.00',
       shipping: order.shipping_fee || '60.00',
       total_amount: order.total_amount || order.order_total || '0.00',

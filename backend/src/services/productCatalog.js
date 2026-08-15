@@ -141,7 +141,8 @@ async function resolveProductName(retailerId) {
     }
   }
 
-  return idStr;
+  // If still unresolved and pure digits, return clean brand default
+  return 'LINNDEN Premium Modal Trunks';
 }
 
 module.exports = {

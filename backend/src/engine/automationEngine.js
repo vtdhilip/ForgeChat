@@ -664,6 +664,39 @@ async function executeMessageNode(client, executionId, node, context) {
         interactive.header = { type: 'text', text: String(headerText).slice(0, 60) };
       }
       payload = { interactive };
+    } else if (directType === 'flow') {
+      const flowId = String(dd.flow_id || dd.flowId || process.env.WHATSAPP_ADDRESS_FLOW_ID || '').trim();
+      const flowCta = resolveVariables(dd.flow_cta || dd.button_text || 'Enter Address 📝', context).trim().slice(0, 20) || 'Enter Address 📝';
+      const flowToken = `flow_${Date.now()}`;
+      const headerText = resolveVariables(dd.header, context);
+      const footerText = resolveVariables(dd.footer, context);
+
+      kind = 'interactive';
+      const interactive = {
+        type: 'flow',
+        body: { text: resolvedBody || 'Please provide your delivery address below:' },
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_message_version: '3',
+            flow_token: flowToken,
+            flow_id: flowId,
+            flow_cta: flowCta,
+            flow_action: 'navigate',
+            flow_action_payload: {
+              screen: dd.flow_screen || 'ADDRESS_SCREEN',
+              data: {}
+            }
+          }
+        }
+      };
+      if (headerText && headerText.trim()) {
+        interactive.header = { type: 'text', text: String(headerText).slice(0, 60) };
+      }
+      if (footerText && footerText.trim()) {
+        interactive.footer = { text: String(footerText).slice(0, 60) };
+      }
+      payload = { interactive };
     } else if (directType === 'location') {
       const lat = String(dd.latitude ?? '').trim();
       const lon = String(dd.longitude ?? '').trim();

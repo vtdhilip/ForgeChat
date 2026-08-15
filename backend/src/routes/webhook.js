@@ -163,7 +163,9 @@ async function parseMetaPayload(body) {
             }
             totalNum += qty * priceNum;
             const priceStr = priceNum > 0 ? ` (${curr}${priceNum})` : '';
-            const pName = it.name || it.title || it.product_name || (await resolveProductName(it.product_retailer_id));
+            const pName = it.name || it.title || it.product_name || (await resolveProductName(it.product_retailer_id)) || 'LINNDEN Premium Modal Trunks';
+            it.name = pName;
+            it.title = pName;
             itemDescs.push(`${qty}x ${pName}${priceStr}`);
           }
           const noteStr = o.text ? `\nNote: ${o.text}` : '';
