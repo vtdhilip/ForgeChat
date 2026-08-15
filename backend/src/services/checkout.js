@@ -25,9 +25,15 @@ async function ensureOrdersTable() {
         razorpay_payment_link_id VARCHAR(128),
         razorpay_payment_id VARCHAR(128),
         payment_link_url TEXT,
+        courier VARCHAR(128),
+        tracking_number VARCHAR(128),
+        tracking_url TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+      ALTER TABLE coexistence.orders ADD COLUMN IF NOT EXISTS courier VARCHAR(128);
+      ALTER TABLE coexistence.orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(128);
+      ALTER TABLE coexistence.orders ADD COLUMN IF NOT EXISTS tracking_url TEXT;
     `);
   } catch (err) {
     console.error('[checkout] ensure orders table failed:', err.message);

@@ -35,6 +35,7 @@ const { router: dashboardRouter } = require('./routes/dashboard');
 const { router: pipelinesRouter } = require('./routes/pipelines');
 const { adminRouter: mcpAdminRouter, apiRouter: mcpApiRouter, ensureMcpTables } = require('./routes/mcp');
 const razorpayWebhookRouter = require('./routes/razorpayWebhook');
+const orderStatusWebhookRouter = require('./routes/orderStatusWebhook');
 const { mcpHttpHandler } = require('./mcpHttp');
 const { startWorker: startMediaWorker, shutdown: shutdownMediaQueue } = require('./queue/mediaQueue');
 const { startSendWorker, shutdownSendQueue } = require('./queue/sendQueue');
@@ -125,6 +126,8 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api', webhookRouter);
 // Razorpay payment webhook — uses its own HMAC-SHA256 signature check
 app.use('/api/razorpay/webhook', razorpayWebhookRouter);
+// Order fulfillment & shipping status webhook (from Google Sheets / external)
+app.use('/api/orders', orderStatusWebhookRouter);
 // Google OAuth callback is public: Google redirects the user's browser back
 // here, and we re-derive the user from the signed `state` param (see
 // routes/googleIntegrations.js). Everything else under /google-integrations is
