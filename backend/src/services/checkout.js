@@ -6,6 +6,8 @@ const pool = require('../db');
 async function ensureOrdersTable() {
   try {
     await pool.query(`
+      CREATE SEQUENCE IF NOT EXISTS coexistence.order_number_seq START WITH 1001;
+
       CREATE TABLE IF NOT EXISTS coexistence.orders (
         id SERIAL PRIMARY KEY,
         order_number VARCHAR(64) UNIQUE NOT NULL,
@@ -41,11 +43,19 @@ async function ensureOrdersTable() {
 }
 
 /**
- * Generate unique order number e.g. "TJ-8341"
+ * Generate sequential, ordered order number with "LN" prefix e.g. "LN-1001", "LN-1002"
  */
-function generateOrderNumber() {
+async function generateOrderNumber() {
+  try {
+    const { rows } = await pool.query(`SELECT nextval('coexistence.order_number_seq') AS seq`);
+    if (rows.length > 0 && rows[0].seq) {
+      return `LN-${rows[0].seq}`;
+    }
+  } catch (err) {
+    console.warn('[checkout] sequence nextval failed, using fallback:', err.message);
+  }
   const rand = Math.floor(1000 + Math.random() * 9000);
-  return `TJ-${rand}`;
+  return `LN-${rand}`;
 }
 
 /**
@@ -195,7 +205,7 @@ async function createShopifyDraftOrder({ lineItems, customerName, contactNumber,
 async function processOrderCheckout({ contactNumber, contactName, deliveryAddress, orderData, shippingFee = 60, customSubtotal = null, waNumber = null }) {
   await ensureOrdersTable();
 
-  const orderNumber = generateOrderNumber();
+  const orderNumber = await generateOrderNumber();
   const rawItems = orderData?.product_items || [];
   
   // Calculate Subtotal

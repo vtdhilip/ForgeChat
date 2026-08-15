@@ -152,7 +152,7 @@ router.post('/', async (req, res) => {
     let orderNumber = pl.notes?.order_number || payment.notes?.order_number || orderEntity.notes?.order_number || null;
     if (!orderNumber) {
       const desc = pl.description || payment.description || '';
-      const m = desc.match(/Order #?(TJ-\d+)/i);
+      const m = desc.match(/Order #?([A-Za-z0-9_-]+)/i);
       if (m) orderNumber = m[1].toUpperCase();
     }
 
@@ -168,7 +168,7 @@ router.post('/', async (req, res) => {
           WHERE (razorpay_payment_link_id IS NOT NULL AND razorpay_payment_link_id = $2)
              OR (order_number IS NOT NULL AND order_number = $3)
              OR (razorpay_order_id IS NOT NULL AND razorpay_order_id = $4)
-          RETURNING order_number, contact_number, wa_number, total_amount`,
+          RETURNING *`,
         [paymentId, paymentLinkId, orderNumber, razorpayOrderId]
       );
 
@@ -183,6 +183,12 @@ router.post('/', async (req, res) => {
       // Update Google Sheet status to PAID
       updateOrderPaymentInGoogleSheet(order.order_number, 'paid', paymentId).catch(sheetErr => {
         console.error('[razorpay-webhook] Google Sheet update error:', sheetErr.message);
+      });
+
+      // Auto-push order to Shiprocket (if credentials configured in .env)
+      const { createShiprocketOrder } = require('../services/shiprocket');
+      createShiprocketOrder(order).catch(sErr => {
+        console.error('[razorpay-webhook] Shiprocket auto-push error:', sErr.message);
       });
 
       // Send WhatsApp confirmation

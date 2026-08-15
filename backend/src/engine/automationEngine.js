@@ -64,7 +64,7 @@ function resolveVariables(text, context) {
   const shippingStr = context.extra_lookup?.shipping_fee || '60.00';
   const totalNum = parseFloat(subtotalStr) + parseFloat(shippingStr);
   const orderTotalStr = context.extra_lookup?.order_total || totalNum.toFixed(2);
-  const orderNumStr = context.extra_lookup?.order_number || 'TJ-8341';
+  const orderNumStr = context.extra_lookup?.order_number || 'LN-1001';
   const payLinkStr = context.extra_lookup?.payment_link || `https://rzp.io/l/pay-${orderNumStr.toLowerCase()}`;
 
   const lookup = {

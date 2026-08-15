@@ -36,6 +36,7 @@ const { router: pipelinesRouter } = require('./routes/pipelines');
 const { adminRouter: mcpAdminRouter, apiRouter: mcpApiRouter, ensureMcpTables } = require('./routes/mcp');
 const razorpayWebhookRouter = require('./routes/razorpayWebhook');
 const orderStatusWebhookRouter = require('./routes/orderStatusWebhook');
+const shiprocketWebhookRouter = require('./routes/shiprocketWebhook');
 const { mcpHttpHandler } = require('./mcpHttp');
 const { startWorker: startMediaWorker, shutdown: shutdownMediaQueue } = require('./queue/mediaQueue');
 const { startSendWorker, shutdownSendQueue } = require('./queue/sendQueue');
@@ -128,6 +129,8 @@ app.use('/api', webhookRouter);
 app.use('/api/razorpay/webhook', razorpayWebhookRouter);
 // Order fulfillment & shipping status webhook (from Google Sheets / external)
 app.use('/api/orders', orderStatusWebhookRouter);
+// Shiprocket automated tracking & shipping updates webhook
+app.use('/api/shiprocket/webhook', shiprocketWebhookRouter);
 // Google OAuth callback is public: Google redirects the user's browser back
 // here, and we re-derive the user from the signed `state` param (see
 // routes/googleIntegrations.js). Everything else under /google-integrations is
