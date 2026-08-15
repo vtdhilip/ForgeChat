@@ -9,17 +9,15 @@
 let cachedToken = null;
 let tokenExpiresAt = 0;
 
-/**
- * Authenticates with Shiprocket API using SHIPROCKET_EMAIL and SHIPROCKET_PASSWORD
- */
 async function getShiprocketToken() {
-  const email = (process.env.SHIPROCKET_EMAIL || '').trim();
-  const password = (process.env.SHIPROCKET_PASSWORD || '').trim();
-  const directToken = (process.env.SHIPROCKET_API_TOKEN || '').trim();
-
+  const directToken = (process.env.SHIPROCKET_API_TOKEN || '').trim().replace(/^["']|["']$/g, '');
   if (directToken) return directToken;
+
+  const email = (process.env.SHIPROCKET_EMAIL || '').trim().replace(/^["']|["']$/g, '');
+  const password = (process.env.SHIPROCKET_PASSWORD || '').trim().replace(/^["']|["']$/g, '');
+
   if (!email || !password) {
-    console.log('[shiprocket] SHIPROCKET_EMAIL or SHIPROCKET_PASSWORD not set in .env — skipping auto-order creation');
+    console.log('[shiprocket] SHIPROCKET_API_TOKEN not set in .env — skipping auto-order creation');
     return null;
   }
 
