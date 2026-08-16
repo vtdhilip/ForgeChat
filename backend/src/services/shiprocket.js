@@ -168,12 +168,13 @@ async function createShiprocketOrder(order) {
 
     let data = await res.json();
 
-    // If pickup location failed, try auto-detecting pickup location from Shiprocket
-    if (!res.ok && (data.message || '').toLowerCase().includes('pickup')) {
-      const locations = await getAvailablePickupLocations(token);
-      if (locations.length > 0 && locations[0] !== pickupLocation) {
-        console.log(`[shiprocket] Retrying with active pickup location: "${locations[0]}"`);
-        pickupLocation = locations[0];
+    // If pickup location failed, Shiprocket provides active locations in the error response!
+    if (!data.order_id && (data.message || '').toLowerCase().includes('pickup')) {
+      const fallbackLoc = data.data?.data?.[0]?.pickup_location || data.data?.[0]?.pickup_location;
+      const targetLoc = fallbackLoc || (await getAvailablePickupLocations(token))[0];
+      if (targetLoc) {
+        console.log(`[shiprocket] Auto-retrying with active pickup location: "${targetLoc}"`);
+        pickupLocation = targetLoc;
         res = await fetch('https://apiv2.shiprocket.in/v1/external/orders/create/adhoc', {
           method: 'POST',
           headers: {
