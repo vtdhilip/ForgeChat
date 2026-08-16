@@ -15,13 +15,17 @@ let tokenExpiresAt = 0;
  */
 async function getShiprocketToken() {
   const directToken = (process.env.SHIPROCKET_API_TOKEN || '').trim().replace(/^["']|["']$/g, '');
-  if (directToken) return directToken;
+  if (directToken && directToken.split('.').length === 3) {
+    return directToken;
+  } else if (directToken) {
+    console.warn('[shiprocket] SHIPROCKET_API_TOKEN in .env is not a 3-segment JWT. Falling back to email/password login.');
+  }
 
   const email = (process.env.SHIPROCKET_EMAIL || '').trim().replace(/^["']|["']$/g, '');
   const password = (process.env.SHIPROCKET_PASSWORD || '').trim().replace(/^["']|["']$/g, '');
 
   if (!email || !password) {
-    console.log('[shiprocket] SHIPROCKET_API_TOKEN not set in .env — skipping auto-order creation');
+    console.log('[shiprocket] Neither valid SHIPROCKET_API_TOKEN (JWT) nor SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD set in .env');
     return null;
   }
 
