@@ -87,9 +87,16 @@ router.post('/', async (req, res) => {
       );
     }
 
-    // 3. Update Google Sheet
+    // 3. Update Google Sheet (Status, Courier, AWB Tracking Number, Tracking URL)
     if (orderNumber) {
-      updateOrderPaymentInGoogleSheet(orderNumber, normalizedStatus).catch(() => {});
+      updateOrderPaymentInGoogleSheet(
+        orderNumber,
+        normalizedStatus,
+        order?.razorpay_payment_id || '',
+        courier,
+        awb,
+        trackingUrl
+      ).catch(() => {});
     }
 
     // 4. Send WhatsApp Notification to Customer

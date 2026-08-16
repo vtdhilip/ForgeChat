@@ -66,9 +66,9 @@ async function appendOrderToGoogleSheet(order) {
 }
 
 /**
- * Updates order payment status in Google Sheet (e.g. from unpaid -> PAID)
+ * Updates order status, payment ID, courier, and tracking details in Google Sheet
  */
-async function updateOrderPaymentInGoogleSheet(orderNumber, status = 'paid', paymentId = '') {
+async function updateOrderPaymentInGoogleSheet(orderNumber, status = 'paid', paymentId = '', courier = '', trackingNumber = '', trackingUrl = '') {
   const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || process.env.GOOGLE_SHEETS_WEBHOOK_URL;
   if (!webhookUrl) return false;
 
@@ -77,8 +77,11 @@ async function updateOrderPaymentInGoogleSheet(orderNumber, status = 'paid', pay
       action: 'update_status',
       order_number: orderNumber,
       status: status.toUpperCase(),
-      payment_id: paymentId,
-      paid_at: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      payment_id: paymentId || '',
+      courier: courier || '',
+      tracking_number: trackingNumber || '',
+      tracking_url: trackingUrl || '',
+      updated_at: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
     };
 
     const res = await fetch(webhookUrl, {
@@ -88,7 +91,7 @@ async function updateOrderPaymentInGoogleSheet(orderNumber, status = 'paid', pay
     });
 
     if (res.ok) {
-      console.log(`[googleSheets] Order #${orderNumber} status updated to ${status.toUpperCase()} in Google Sheet!`);
+      console.log(`[googleSheets] Order #${orderNumber} updated in Google Sheet (Status: ${status.toUpperCase()}, Courier: ${courier || 'N/A'}, AWB: ${trackingNumber || 'N/A'})`);
       return true;
     } else {
       console.warn(`[googleSheets] Google Sheet status update returned HTTP ${res.status}`);
