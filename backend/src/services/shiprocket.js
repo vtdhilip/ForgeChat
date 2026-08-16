@@ -2,13 +2,17 @@
  * Shiprocket API Service
  *
  * Handles:
- *  1. Authentication with Shiprocket API (token caching)
- *  2. Creating adhoc orders in Shiprocket
+ *  1. Authentication with Shiprocket API (token caching / direct token)
+ *  2. Fetching registered pickup locations
+ *  3. Creating adhoc orders in Shiprocket
  */
 
 let cachedToken = null;
 let tokenExpiresAt = 0;
 
+/**
+ * Authenticates with Shiprocket API using SHIPROCKET_API_TOKEN or SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD
+ */
 async function getShiprocketToken() {
   const directToken = (process.env.SHIPROCKET_API_TOKEN || '').trim().replace(/^["']|["']$/g, '');
   if (directToken) return directToken;
@@ -21,7 +25,7 @@ async function getShiprocketToken() {
     return null;
   }
 
-  // Return cached token if still valid (valid for 10 days)
+  // Return cached token if still valid
   if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
@@ -50,21 +54,42 @@ async function getShiprocketToken() {
 }
 
 /**
+ * Fetch available pickup locations from Shiprocket
+ */
+async function getAvailablePickupLocations(token) {
+  try {
+    const res = await fetch('https://apiv2.shiprocket.in/v1/external/settings/company/pickup', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const locations = data?.data?.shipping_address || [];
+      return locations.map(l => l.pickup_location || l.name || l.address);
+    }
+  } catch (err) {
+    console.warn('[shiprocket] Could not fetch pickup locations:', err.message);
+  }
+  return [];
+}
+
+/**
  * Creates an order in Shiprocket
  */
 async function createShiprocketOrder(order) {
   const token = await getShiprocketToken();
-  if (!token) return null;
+  if (!token) {
+    console.warn('[shiprocket] No active token found. Check SHIPROCKET_API_TOKEN in .env');
+    return { success: false, error: 'No active SHIPROCKET_API_TOKEN in .env' };
+  }
 
   try {
-    const pickupLocation = (process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary').trim();
+    let pickupLocation = (process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary').trim();
     const orderNumber = order.order_number || order.order_id || `LN-${Date.now()}`;
     const customerName = order.contact_name || order.customer_name || 'Customer';
     const phone = String(order.contact_number || order.phone || '').replace(/\D/g, '').slice(-10);
     const address = order.delivery_address || order.address || 'Address provided on WhatsApp';
     const subtotal = parseFloat(order.subtotal || order.total_amount || 359);
     const shipping = parseFloat(order.shipping_fee || order.shipping || 60);
-    const total = parseFloat(order.total_amount || (subtotal + shipping));
 
     let items = [];
     if (order.items) {
@@ -84,7 +109,7 @@ async function createShiprocketOrder(order) {
 
     if (items.length === 0) {
       items = [{
-        name: 'LINNDEN Premium Apparel',
+        name: 'LINNDEN Premium Modal Trunks',
         sku: `SKU-${orderNumber}`,
         units: 1,
         selling_price: subtotal,
@@ -98,10 +123,10 @@ async function createShiprocketOrder(order) {
     const pinMatch = address.match(/\b\d{6}\b/);
     const pincode = pinMatch ? pinMatch[0] : (process.env.SHIPROCKET_DEFAULT_PINCODE || '600001');
 
-    const payload = {
+    const buildPayload = (loc) => ({
       order_id: orderNumber,
       order_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
-      pickup_location: pickupLocation,
+      pickup_location: loc,
       channel_id: '',
       comment: 'WhatsApp Order',
       billing_customer_name: customerName,
@@ -126,32 +151,52 @@ async function createShiprocketOrder(order) {
       breadth: 10,
       height: 5,
       weight: 0.2,
-    };
+    });
 
-    const res = await fetch('https://apiv2.shiprocket.in/v1/external/orders/create/adhoc', {
+    let res = await fetch('https://apiv2.shiprocket.in/v1/external/orders/create/adhoc', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(buildPayload(pickupLocation)),
     });
 
-    const data = await res.json();
+    let data = await res.json();
+
+    // If pickup location failed, try auto-detecting pickup location from Shiprocket
+    if (!res.ok && (data.message || '').toLowerCase().includes('pickup')) {
+      const locations = await getAvailablePickupLocations(token);
+      if (locations.length > 0 && locations[0] !== pickupLocation) {
+        console.log(`[shiprocket] Retrying with active pickup location: "${locations[0]}"`);
+        pickupLocation = locations[0];
+        res = await fetch('https://apiv2.shiprocket.in/v1/external/orders/create/adhoc', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(buildPayload(pickupLocation)),
+        });
+        data = await res.json();
+      }
+    }
+
     if (res.ok && data.order_id) {
-      console.log(`[shiprocket] ✅ Order ${orderNumber} created in Shiprocket (ID: ${data.order_id}, Shipment ID: ${data.shipment_id})`);
-      return data;
+      console.log(`[shiprocket] ✅ Order ${orderNumber} created in Shiprocket (Order ID: ${data.order_id}, Shipment ID: ${data.shipment_id})`);
+      return { success: true, ...data };
     } else {
       console.warn(`[shiprocket] Order creation returned HTTP ${res.status}:`, JSON.stringify(data));
-      return data;
+      return { success: false, status: res.status, data };
     }
   } catch (err) {
     console.error('[shiprocket] Error creating order:', err.message);
-    return null;
+    return { success: false, error: err.message };
   }
 }
 
 module.exports = {
   getShiprocketToken,
+  getAvailablePickupLocations,
   createShiprocketOrder,
 };

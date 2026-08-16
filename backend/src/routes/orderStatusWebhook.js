@@ -219,4 +219,48 @@ router.post('/sheet-status-update', async (req, res) => {
   }
 });
 
+// ─── POST /api/orders/sync-shiprocket ─────────────────────────────────────────
+router.post('/sync-shiprocket', async (req, res) => {
+  await ensureOrdersTable();
+  const { createShiprocketOrder, getShiprocketToken } = require('../services/shiprocket');
+
+  const targetNum = (req.body?.order_number || req.body?.order_id || req.body?.orderNumber || '').trim();
+
+  try {
+    const token = await getShiprocketToken();
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Shiprocket authentication failed. Please check SHIPROCKET_API_TOKEN in .env',
+      });
+    }
+
+    if (targetNum) {
+      const { rows } = await pool.query(
+        `SELECT * FROM coexistence.orders WHERE order_number = $1 LIMIT 1`,
+        [targetNum]
+      );
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, error: `Order ${targetNum} not found in database` });
+      }
+      const order = rows[0];
+      const result = await createShiprocketOrder(order);
+      return res.json({ success: !!result?.order_id, order_number: targetNum, result });
+    }
+
+    // If no specific order given, sync the most recent orders
+    const { rows } = await pool.query(
+      `SELECT * FROM coexistence.orders ORDER BY id DESC LIMIT 10`
+    );
+    const results = [];
+    for (const ord of rows) {
+      const r = await createShiprocketOrder(ord);
+      results.push({ order_number: ord.order_number, success: !!r?.order_id, result: r });
+    }
+    return res.json({ success: true, synced_count: results.length, results });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
