@@ -21,6 +21,24 @@ export const api = {
       req('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
     logout: () => req('/auth/logout', { method: 'POST' }),
   },
+  organizations: {
+    list: () => req('/organizations'),
+    create: (name, plan = 'starter', settings = {}) =>
+      req('/organizations', { method: 'POST', body: JSON.stringify({ name, plan, settings }) }),
+    get: (id) => req(`/organizations/${id}`),
+    update: (id, data) => req(`/organizations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    switch: (org_id) => req('/organizations/switch', { method: 'POST', body: JSON.stringify({ org_id }) }),
+    members: (id) => req(`/organizations/${id}/members`),
+    addMember: (id, email, username, role) =>
+      req(`/organizations/${id}/members`, { method: 'POST', body: JSON.stringify({ email, username, role }) }),
+    removeMember: (id, userId) =>
+      req(`/organizations/${id}/members/${userId}`, { method: 'DELETE' }),
+    getIntegrations: (id) => req(`/organizations/${id}/integrations`),
+    updateIntegrations: (id, integrations) =>
+      req(`/organizations/${id}/integrations`, { method: 'PUT', body: JSON.stringify({ integrations }) }),
+    testIntegration: (id, type, credentials) =>
+      req(`/organizations/${id}/integrations/test`, { method: 'POST', body: JSON.stringify({ type, credentials }) }),
+  },
   dashboard: (range = '7d') => req(`/dashboard?range=${encodeURIComponent(range)}`),
   dashboardDetails: (metric, range = '7d') =>
     req(`/dashboard/details?metric=${encodeURIComponent(metric)}&range=${encodeURIComponent(range)}`),

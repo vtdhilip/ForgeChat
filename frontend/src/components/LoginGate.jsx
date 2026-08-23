@@ -44,25 +44,6 @@ export default function LoginGate({ onLogin }) {
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* Subtle radial accent */}
-        <div style={{
-          position: 'absolute',
-          top: '-20%',
-          right: '-10%',
-          width: '60%',
-          height: '60%',
-          background: 'radial-gradient(circle, rgba(220,38,38,0.15) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute',
-          bottom: '-20%',
-          left: '-10%',
-          width: '50%',
-          height: '50%',
-          background: 'radial-gradient(circle, rgba(83,74,183,0.12) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
 
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 480 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 40 }}>
@@ -79,7 +60,7 @@ export default function LoginGate({ onLogin }) {
                 letterSpacing: '-0.02em',
                 color: C.headerText,
               }}>
-                Forge<span style={{ color: C.primary }}>Chat</span>
+                Synaptic <span style={{ color: C.primary }}>Chat</span>
               </div>
               <div style={{
                 fontSize: 11,
@@ -89,7 +70,7 @@ export default function LoginGate({ onLogin }) {
                 textTransform: 'uppercase',
                 marginTop: 4,
               }}>
-                powered by FMOS
+                Enterprise WhatsApp CRM
               </div>
             </div>
           </div>
@@ -115,25 +96,20 @@ export default function LoginGate({ onLogin }) {
 
         </div>
 
-        <a
-          href="https://forgemind.in/"
-          target="_blank"
-          rel="noopener noreferrer"
+        <div
           style={{
             position: 'absolute',
             bottom: 32,
             left: 64,
-            fontSize: 10,
-            fontWeight: 600,
-            color: '#52525b',
+            fontSize: 11,
+            fontWeight: 700,
+            color: '#71717a',
             letterSpacing: '.06em',
             textTransform: 'uppercase',
-            textDecoration: 'none',
-            cursor: 'pointer',
           }}
         >
-          FORGEMIND <span style={{ color: C.primary }}>AI</span>
-        </a>
+          SYNAPTIC <span style={{ color: C.primary }}>CHAT</span>
+        </div>
       </div>
 
       {/* Right form panel */}
@@ -189,7 +165,7 @@ export default function LoginGate({ onLogin }) {
               </div>
               <input
                 type="email"
-                placeholder="admin@forgemind.space"
+                placeholder="admin@synaptic.chat"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 autoFocus

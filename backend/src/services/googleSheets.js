@@ -23,10 +23,28 @@ function formatProductItems(product, items) {
 /**
  * Appends a new order row to Google Sheets via Google Apps Script Webhook or direct HTTP webhook.
  */
-async function appendOrderToGoogleSheet(order) {
-  const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+async function appendOrderToGoogleSheet(order, orgId = null) {
+  const resolvedOrgId = orgId || order?.org_id || null;
+  let webhookUrl = '';
+
+  if (resolvedOrgId) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT settings FROM coexistence.organizations WHERE id = $1`,
+        [resolvedOrgId]
+      );
+      if (rows.length > 0 && rows[0].settings) {
+        webhookUrl = (rows[0].settings.google_sheet_webhook_url || rows[0].settings.googleSheets?.webhookUrl || '').trim();
+      }
+    } catch {}
+  }
+
   if (!webhookUrl) {
-    console.log('[googleSheets] GOOGLE_SHEET_WEBHOOK_URL not set — skipping Google Sheets sync');
+    webhookUrl = (process.env.GOOGLE_SHEET_WEBHOOK_URL || process.env.GOOGLE_SHEETS_WEBHOOK_URL || '').trim();
+  }
+
+  if (!webhookUrl) {
+    console.log('[googleSheets] GOOGLE_SHEET_WEBHOOK_URL not set in org settings or .env — skipping sync');
     return false;
   }
 

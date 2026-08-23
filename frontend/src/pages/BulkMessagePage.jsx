@@ -22,7 +22,7 @@ function StatusBadge({ status }) {
   const config = {
     DRAFT:     { bg: '#f3f4f6', color: 'var(--c-textSecondary)', border: '#e5e7eb', dot: '#9ca3af' },
     SENDING:   { bg: '#dbeafe', color: '#1e40af', border: '#bfdbfe', dot: '#3b82f6' },
-    SENT:      { bg: '#d1fae5', color: '#065f46', border: '#a7f3d0', dot: '#10b981' },
+    SENT:      { bg: '#FFF0E6', color: '#FF5A00', border: '#FFCCA8', dot: '#FF5A00' },
     PARTIAL:   { bg: '#fef3c7', color: '#92400e', border: '#fde68a', dot: '#f59e0b' },
     FAILED:    { bg: '#fee2e2', color: '#991b1b', border: '#fecaca', dot: '#ef4444' },
   };
@@ -65,7 +65,7 @@ function ActionBadge({ action }) {
 function LogStatusBadge({ status }) {
   const colors = {
     PENDING: { bg: '#f3f4f6', color: 'var(--c-textSecondary)', border: '#e5e7eb' },
-    SENT: { bg: '#d1fae5', color: '#065f46', border: '#a7f3d0' },
+    SENT: { bg: '#FFF0E6', color: '#FF5A00', border: '#FFCCA8' },
     FAILED: { bg: '#fee2e2', color: '#991b1b', border: '#fecaca' },
   };
   const c = colors[status] || colors.PENDING;
@@ -110,7 +110,7 @@ function BroadcastMessagePreview({ messageType, body, url, mediaLibraryId, capti
           <div style={{ background: '#075E54', paddingTop: 50, paddingBottom: 8, paddingLeft: 12, paddingRight: 12, color: '#fff', fontFamily: "-apple-system, 'SF Pro Display', system-ui, sans-serif", flexShrink: 0, position: 'relative', zIndex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: '#fff', fontSize: 20, lineHeight: 1, opacity: .9, marginRight: -2 }}>‹</span>
-              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,#1D9E75,#0F6E56)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>F</div>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#FF5A00', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>S</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Your Business</div>
                 <div style={{ fontSize: 10, opacity: .82, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>online</div>
@@ -141,7 +141,7 @@ function BroadcastMessagePreview({ messageType, body, url, mediaLibraryId, capti
                 )}
                 {messageType === 'audio' && selectedMedia && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0F6E56', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#FF5A00', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Music size={14} color="#fff" />
                     </div>
                     <div style={{ flex: 1, height: 4, background: 'rgba(0,0,0,0.1)', borderRadius: 2 }} />
@@ -183,7 +183,7 @@ function KpiCards({ metrics }) {
   const cards = [
     { key: 'recipients', label: 'Recipients', value: totalRecipients, color: '#dc2626', bg: '#FCEBEB', icon: Users },
     { key: 'sent', label: 'Sent', value: totalSent, color: '#2563eb', bg: '#E3F2FD', icon: Send },
-    { key: 'delivered', label: 'Received', value: totalDelivered, color: '#0F6E56', bg: '#E1F5EE', icon: CheckCircle },
+    { key: 'delivered', label: 'Received', value: totalDelivered, color: '#FF5A00', bg: '#FFF0E6', icon: CheckCircle },
     { key: 'read', label: 'Read', value: totalRead, color: '#7c3aed', bg: '#EDE9FE', icon: Eye },
   ];
 
@@ -981,7 +981,7 @@ export default function BulkMessagePage({ onNavigate }) {
                     {/* Linked account status — shown once the lookup resolves */}
                     {newBroadcastFrom && accountLookupDone && (
                       linkedAccount ? (
-                        <div style={{ marginTop: 6, fontSize: 11, color: '#0F6E56', fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ marginTop: 6, fontSize: 11, color: '#FF5A00', fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 4 }}>
                           ✓ Linked to <strong>{linkedAccount.displayName}</strong> · WABA {linkedAccount.wabaId}
                           {!linkedAccount.isActive && <span style={{ color: '#E65100', marginLeft: 6 }}>(inactive)</span>}
                         </div>
@@ -1579,11 +1579,11 @@ export default function BulkMessagePage({ onNavigate }) {
                       <div style={{ fontSize: 10, color: C.textMuted }}>Sent</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#10b981' }}>{b.statusRollup.delivered || 0}</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#FF5A00' }}>{b.statusRollup.delivered || 0}</div>
                       <div style={{ fontSize: 10, color: C.textMuted }}>Delivered</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: '#059669' }}>{b.statusRollup.read || 0}</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#7c3aed' }}>{b.statusRollup.read || 0}</div>
                       <div style={{ fontSize: 10, color: C.textMuted }}>Read</div>
                     </div>
                     <div style={{ textAlign: 'center' }}>

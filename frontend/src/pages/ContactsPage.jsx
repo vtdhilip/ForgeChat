@@ -1102,7 +1102,7 @@ export default function ContactsPage({ user, onNavigate }) {
                           </div>
                         ) : (
                           <div style={{ padding: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#E1F5EE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0F6E56' }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 8, background: '#FFF0E6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF5A00' }}>
                               {broadcastMessageType === 'audio' ? <Music size={20} /> : <FileText size={20} />}
                             </div>
                             <div>

@@ -35,9 +35,9 @@ const B = {
   accent: C.primary,
   accentBg: C.primaryLight,
   accentDark: C.primaryHover,
-  green: '#0F6E56',
-  greenBright: '#1D9E75',
-  greenBg: '#E1F5EE',
+  green: '#FF5A00',
+  greenBright: '#FF5A00',
+  greenBg: '#FFF0E6',
   red: '#A32D2D',
   redBg: '#FCEBEB',
   orange: '#E65100',
@@ -82,9 +82,9 @@ const STATUSES = {
 };
 
 const QUALITY_STYLES = {
-  GREEN: { color: '#0F6E56', label: 'Quality: Green' },
-  YELLOW: { color: '#E65100', label: 'Quality: Yellow' },
-  RED: { color: '#A32D2D', label: 'Quality: Red' },
+  GREEN: { color: '#FF5A00', label: 'Quality: High' },
+  YELLOW: { color: '#E65100', label: 'Quality: Medium' },
+  RED: { color: '#A32D2D', label: 'Quality: Low' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -257,7 +257,7 @@ function WaPreview({ headerType, headerText, bodyText, footerText, buttons, secu
             {headerType === 'IMAGE' && (
               headerMediaLibraryId
                 ? <img src={api.mediaLibrary.downloadUrl(headerMediaLibraryId)} alt="" style={{ margin: '-6px -7px 6px -9px', borderRadius: '7.5px 7.5px 0 0', height: 120, width: 'calc(100% + 16px)', objectFit: 'cover', display: 'block' }} />
-                : <div style={{ margin: '-6px -7px 6px -9px', borderRadius: '7.5px 7.5px 0 0', height: 120, background: 'linear-gradient(135deg,#c9c9c9,#999)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={28} color="rgba(255,255,255,.8)" /></div>
+                : <div style={{ margin: '-6px -7px 6px -9px', borderRadius: '7.5px 7.5px 0 0', height: 120, background: '#D5D5D0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Image size={28} color="rgba(255,255,255,.8)" /></div>
             )}
             {headerType === 'VIDEO' && (
               headerMediaLibraryId

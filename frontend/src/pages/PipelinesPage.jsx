@@ -270,7 +270,7 @@ function KanbanGlyph() {
   return <span style={{ display: 'inline-flex', gap: 2 }}>
     <span style={{ width: 3, height: 12, background: C.primary, borderRadius: 1 }} />
     <span style={{ width: 3, height: 12, background: '#EAB308', borderRadius: 1 }} />
-    <span style={{ width: 3, height: 12, background: '#16A34A', borderRadius: 1 }} />
+    <span style={{ width: 3, height: 12, background: '#3B82F6', borderRadius: 1 }} />
   </span>;
 }
 

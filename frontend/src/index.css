@@ -22,50 +22,49 @@ input, button, textarea, select {
   font-family: inherit;
 }
 
-/* ─── Color palette (light only) ────────────────────────────────────────
-   Tokens consumed via the `C` object in constants.js (each maps to var(--c-*)).
-   This app is light-mode only — there is no dark theme. */
+/* ─── Color palette ──────────────────────────────────────────────────────────
+   Modern high-end SaaS theme with vibrant orange (#ff5a00) primary accent. */
 :root {
-  --c-pageBg: #F7F7F3;
-  --c-sidebarBg: #FAF9F5;
-  --c-sidebarBorder: #E5E5E0;
-  --c-headerBg: #0F0F10;
-  --c-headerText: #F5F5F2;
-  --c-headerMuted: #A1A1AA;
-  --c-headerBorder: rgba(255,255,255,.12);
-  --c-headerSurface: rgba(255,255,255,.06);
-  --c-cardBg: #ffffff;
-  --c-border: #E5E5E0;
-  --c-borderDark: #d1d7db;
-  --c-text: #111111;
+  --c-pageBg: #F8F9FB;
+  --c-sidebarBg: #FFFFFF;
+  --c-sidebarBorder: #EAECEF;
+  --c-headerBg: #FFFFFF;
+  --c-headerText: #111827;
+  --c-headerMuted: #6B7280;
+  --c-headerBorder: #EAECEF;
+  --c-headerSurface: #F3F4F6;
+  --c-cardBg: #FFFFFF;
+  --c-border: #EAECEF;
+  --c-borderDark: #D1D5DB;
+  --c-text: #111827;
   --c-textSecondary: #6B7280;
-  --c-textMuted: #8696a0;
-  --c-primary: #dc2626;
-  --c-primaryHover: #b91c1c;
-  --c-primaryLight: #FCEBEB;
-  --c-primaryText: #111b21;
-  --c-purple: #534AB7;
-  --c-green: #0F6E56;
-  --c-amber: #E8A317;
-  --c-shadowSm: 0 1px 2px rgba(0,0,0,.08);
-  --c-shadowMd: 0 8px 24px rgba(0,0,0,.06);
-  --c-shadowLg: 0 20px 60px rgba(0,0,0,.15);
+  --c-textMuted: #9CA3AF;
+  --c-primary: #FF5A00;
+  --c-primaryHover: #E64E00;
+  --c-primaryLight: #FFF2EB;
+  --c-primaryText: #FFFFFF;
+  --c-purple: #7C3AED;
+  --c-green: #FF5A00;
+  --c-amber: #F59E0B;
+  --c-shadowSm: 0 1px 3px rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.02);
+  --c-shadowMd: 0 4px 20px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.02);
+  --c-shadowLg: 0 14px 36px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.03);
   --c-waBg: #e5ddd5;
   /* chat */
-  --c-incomingBg: #ffffff;
-  --c-incomingText: #111b21;
-  --c-outgoingBg: #d9fdd3;
-  --c-outgoingText: #111b21;
-  --c-chatBg: #e5ddd5;
-  --c-statusDelivered: #53bdeb;
-  --c-statusRead: #53bdeb;
-  --c-statusSent: #8696a0;
+  --c-incomingBg: #FFFFFF;
+  --c-incomingText: #111827;
+  --c-outgoingBg: #FFEBDD;
+  --c-outgoingText: #111827;
+  --c-chatBg: #F3F4F6;
+  --c-statusDelivered: #FF5A00;
+  --c-statusRead: #FF5A00;
+  --c-statusSent: #9CA3AF;
   /* neutral aliases for literal-heavy views */
-  --c-surface: #ffffff;
-  --c-surfaceAlt: #F7F7F3;
-  --c-hover: #EFEEE6;
-  --c-chatPanel: #f0f2f5;
-  --c-chatWall: #efeae2;
+  --c-surface: #FFFFFF;
+  --c-surfaceAlt: #F8F9FB;
+  --c-hover: #F3F4F6;
+  --c-chatPanel: #FFFFFF;
+  --c-chatWall: #F8F9FB;
 }
 
 input, textarea, select { color: var(--c-text); }

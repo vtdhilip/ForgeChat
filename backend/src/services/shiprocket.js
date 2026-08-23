@@ -7,25 +7,46 @@
  *  3. Creating adhoc orders in Shiprocket
  */
 
+const pool = require('../db');
+
 let cachedToken = null;
 let tokenExpiresAt = 0;
 
 /**
- * Authenticates with Shiprocket API using SHIPROCKET_API_TOKEN or SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD
+ * Authenticates with Shiprocket API using org settings or env variables
  */
-async function getShiprocketToken() {
-  const directToken = (process.env.SHIPROCKET_API_TOKEN || '').trim().replace(/^["']|["']$/g, '');
+async function getShiprocketToken(orgId = null) {
+  let directToken = '';
+  let email = '';
+  let password = '';
+
+  if (orgId) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT settings FROM coexistence.organizations WHERE id = $1`,
+        [orgId]
+      );
+      if (rows.length > 0 && rows[0].settings) {
+        const s = rows[0].settings;
+        directToken = (s.shiprocket_token || s.shiprocket?.token || '').trim();
+        email = (s.shiprocket_email || s.shiprocket?.email || '').trim();
+        password = (s.shiprocket_password || s.shiprocket?.password || '').trim();
+      }
+    } catch {}
+  }
+
+  if (!directToken) directToken = (process.env.SHIPROCKET_API_TOKEN || '').trim().replace(/^["']|["']$/g, '');
+  if (!email) email = (process.env.SHIPROCKET_EMAIL || '').trim().replace(/^["']|["']$/g, '');
+  if (!password) password = (process.env.SHIPROCKET_PASSWORD || '').trim().replace(/^["']|["']$/g, '');
+
   if (directToken && directToken.split('.').length === 3) {
     return directToken;
   } else if (directToken) {
-    console.warn('[shiprocket] SHIPROCKET_API_TOKEN in .env is not a 3-segment JWT. Falling back to email/password login.');
+    console.warn('[shiprocket] SHIPROCKET_API_TOKEN is not a 3-segment JWT. Falling back to email/password login.');
   }
 
-  const email = (process.env.SHIPROCKET_EMAIL || '').trim().replace(/^["']|["']$/g, '');
-  const password = (process.env.SHIPROCKET_PASSWORD || '').trim().replace(/^["']|["']$/g, '');
-
   if (!email || !password) {
-    console.log('[shiprocket] Neither valid SHIPROCKET_API_TOKEN (JWT) nor SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD set in .env');
+    console.log('[shiprocket] Neither valid SHIPROCKET_API_TOKEN (JWT) nor SHIPROCKET_EMAIL + SHIPROCKET_PASSWORD set in org settings or .env');
     return null;
   }
 
@@ -79,15 +100,28 @@ async function getAvailablePickupLocations(token) {
 /**
  * Creates an order in Shiprocket
  */
-async function createShiprocketOrder(order) {
-  const token = await getShiprocketToken();
+async function createShiprocketOrder(order, orgId = null) {
+  const resolvedOrgId = orgId || order?.org_id || null;
+  const token = await getShiprocketToken(resolvedOrgId);
   if (!token) {
-    console.warn('[shiprocket] No active token found. Check SHIPROCKET_API_TOKEN in .env');
-    return { success: false, error: 'No active SHIPROCKET_API_TOKEN in .env' };
+    console.warn('[shiprocket] No active token found. Check Shiprocket settings in Web UI or .env');
+    return { success: false, error: 'No active Shiprocket credentials configured' };
   }
 
   try {
-    let pickupLocation = (process.env.SHIPROCKET_PICKUP_LOCATION || 'Primary').trim();
+    let pickupLocation = '';
+    if (resolvedOrgId) {
+      try {
+        const { rows } = await pool.query(
+          `SELECT settings FROM coexistence.organizations WHERE id = $1`,
+          [resolvedOrgId]
+        );
+        if (rows.length > 0 && rows[0].settings) {
+          pickupLocation = (rows[0].settings.shiprocket_pickup_location || rows[0].settings.shiprocket?.pickupLocation || '').trim();
+        }
+      } catch {}
+    }
+    if (!pickupLocation) pickupLocation = (process.env.SHIPROCKET_PICKUP_LOCATION || 'warehouse').trim();
     const orderNumber = order.order_number || order.order_id || `LN-${Date.now()}`;
     const customerName = order.contact_name || order.customer_name || 'Customer';
     const phone = String(order.contact_number || order.phone || '').replace(/\D/g, '').slice(-10);

@@ -1630,7 +1630,7 @@ function LibraryPickerModal({ waNumber, sending, onClose, onSend }) {
                 const Icon = meta.Icon;
                 const state = syncStateFor(m);
                 const isSel = selected?.id === m.id;
-                const stateColor = state.kind === 'synced' ? '#059669'
+                const stateColor = state.kind === 'synced' ? '#FF5A00'
                   : state.kind === 'failed' ? '#DC2626'
                   : state.kind === 'expired' ? '#B45309'
                   : '#6B7280';
@@ -1759,6 +1759,6 @@ function LibraryPickerModal({ waNumber, sending, onClose, onSend }) {
 const TYPE_META = {
   image:    { Icon: ImageIcon, label: 'Image',    color: '#3B82F6' },
   video:    { Icon: Video,     label: 'Video',    color: '#8B5CF6' },
-  audio:    { Icon: Music,     label: 'Audio',    color: '#10B981' },
+  audio:    { Icon: Music,     label: 'Audio',    color: '#FF5A00' },
   document: { Icon: FileText,  label: 'Document', color: '#F59E0B' },
 };

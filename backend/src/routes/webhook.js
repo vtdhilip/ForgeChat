@@ -418,37 +418,50 @@ router.post('/webhook/whatsapp', async (req, res) => {
           continue;
         }
 
+        // Resolve tenant org_id from whatsapp_accounts
+        let accountOrgId = null;
+        if (r.phone_number_id || r.wa_number) {
+          const { rows: accRows } = await client.query(
+            `SELECT org_id FROM coexistence.whatsapp_accounts
+              WHERE phone_number_id = $1 OR display_phone_number = $2
+              LIMIT 1`,
+            [r.phone_number_id, r.wa_number]
+          );
+          if (accRows.length > 0 && accRows[0].org_id) {
+            accountOrgId = accRows[0].org_id;
+          }
+        }
+
         // Upsert chat_history (ignore duplicates on message_id)
         await client.query(
           `INSERT INTO coexistence.chat_history
             (message_id, phone_number_id, wa_number, contact_number, to_number,
              direction, message_type, message_body, raw_payload, media_url,
-             media_mime_type, media_filename, status, timestamp, context_message_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             media_mime_type, media_filename, status, timestamp, context_message_id, org_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
            ON CONFLICT (message_id) DO UPDATE SET
              status = EXCLUDED.status,
-             raw_payload = EXCLUDED.raw_payload`,
+             raw_payload = EXCLUDED.raw_payload,
+             org_id = COALESCE(coexistence.chat_history.org_id, EXCLUDED.org_id)`,
           [
             r.message_id, r.phone_number_id, r.wa_number, r.contact_number, r.to_number,
             r.direction, r.message_type, r.message_body, r.raw_payload, r.media_url,
             r.media_mime_type, r.media_filename || null, r.status, r.timestamp,
             r.context_message_id || null,
+            accountOrgId,
           ]
         );
 
         // Upsert the WhatsApp profile/push name into profile_name (NOT name).
-        // `name` is reserved for a name we explicitly captured (AI ask-name flow
-        // or manual save) so inbound messages don't clobber it — that clobbering
-        // is what made the automation "is the contact known?" condition always
-        // true. Display falls back to COALESCE(name, profile_name).
         if (r.contact_number && r.wa_number && r.contact_name) {
           await client.query(
-            `INSERT INTO coexistence.contacts (wa_number, contact_number, profile_name)
-             VALUES ($1, $2, $3)
+            `INSERT INTO coexistence.contacts (wa_number, contact_number, profile_name, org_id)
+             VALUES ($1, $2, $3, $4)
              ON CONFLICT (wa_number, contact_number) DO UPDATE SET
                profile_name = EXCLUDED.profile_name,
+               org_id = COALESCE(coexistence.contacts.org_id, EXCLUDED.org_id),
                updated_at = NOW()`,
-            [r.wa_number, r.contact_number, r.contact_name]
+            [r.wa_number, r.contact_number, r.contact_name, accountOrgId]
           );
         }
       }

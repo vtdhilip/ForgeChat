@@ -43,30 +43,61 @@ async function ensureOrdersTable() {
 }
 
 /**
- * Generate sequential, ordered order number with "LN" prefix e.g. "LN-1001", "LN-1002"
+ * Generate sequential, ordered order number with tenant prefix e.g. "LN-1001", "ACM-1002"
  */
-async function generateOrderNumber() {
+async function generateOrderNumber(orgId = null) {
+  let prefix = 'LN-';
+  if (orgId) {
+    try {
+      const { rows: orgRows } = await pool.query(
+        `SELECT settings->>'order_prefix' AS prefix FROM coexistence.organizations WHERE id = $1`,
+        [orgId]
+      );
+      if (orgRows.length > 0 && orgRows[0].prefix) {
+        prefix = orgRows[0].prefix.trim();
+        if (!prefix.endsWith('-')) prefix += '-';
+      }
+    } catch {}
+  }
+
   try {
     const { rows } = await pool.query(`SELECT nextval('coexistence.order_number_seq') AS seq`);
     if (rows.length > 0 && rows[0].seq) {
-      return `LN-${rows[0].seq}`;
+      return `${prefix}${rows[0].seq}`;
     }
   } catch (err) {
     console.warn('[checkout] sequence nextval failed, using fallback:', err.message);
   }
   const rand = Math.floor(1000 + Math.random() * 9000);
-  return `LN-${rand}`;
+  return `${prefix}${rand}`;
 }
 
 /**
  * Create a live Razorpay Payment Link using Razorpay API
  */
-async function createRazorpayPaymentLink({ amount, currency = 'INR', description, customerName, contactNumber, orderNumber }) {
-  const keyId = (process.env.RAZORPAY_KEY_ID || '').trim().replace(/^["']|["']$/g, '');
-  const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim().replace(/^["']|["']$/g, '');
+async function createRazorpayPaymentLink({ amount, currency = 'INR', description, customerName, contactNumber, orderNumber, orgId = null }) {
+  let keyId = '';
+  let keySecret = '';
+
+  if (orgId) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT settings FROM coexistence.organizations WHERE id = $1`,
+        [orgId]
+      );
+      if (rows.length > 0 && rows[0].settings) {
+        const s = rows[0].settings;
+        keyId = (s.razorpay_key_id || s.razorpay?.keyId || '').trim();
+        keySecret = (s.razorpay_key_secret || s.razorpay?.keySecret || '').trim();
+      }
+    } catch {}
+  }
+
+  if (!keyId) keyId = (process.env.RAZORPAY_KEY_ID || '').trim().replace(/^["']|["']$/g, '');
+  if (!keySecret) keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim().replace(/^["']|["']$/g, '');
 
   if (!keyId || !keySecret) {
-    console.warn('[checkout] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not found in process.env');
+    console.warn('[checkout] RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not found in org settings or process.env');
     return {
       id: `plink_test_${Date.now()}`,
       short_url: `https://rzp.io/l/pay-${orderNumber.toLowerCase()}`,
@@ -202,10 +233,24 @@ async function createShopifyDraftOrder({ lineItems, customerName, contactNumber,
 /**
  * Main Checkout Handler: Creates Draft Order, Payment Link, and records in Database
  */
-async function processOrderCheckout({ contactNumber, contactName, deliveryAddress, orderData, shippingFee = 60, customSubtotal = null, waNumber = null }) {
+async function processOrderCheckout({ contactNumber, contactName, deliveryAddress, orderData, shippingFee = 60, customSubtotal = null, waNumber = null, orgId = null }) {
   await ensureOrdersTable();
 
-  const orderNumber = await generateOrderNumber();
+  // Resolve orgId if not explicitly passed
+  let resolvedOrgId = orgId || orderData?.org_id || null;
+  if (!resolvedOrgId && waNumber) {
+    try {
+      const { rows: acc } = await pool.query(
+        `SELECT org_id FROM coexistence.whatsapp_accounts WHERE display_phone_number = $1 OR wa_number = $1 LIMIT 1`,
+        [waNumber]
+      );
+      if (acc.length > 0 && acc[0].org_id) {
+        resolvedOrgId = acc[0].org_id;
+      }
+    } catch {}
+  }
+
+  const orderNumber = await generateOrderNumber(resolvedOrgId);
   const rawItems = orderData?.product_items || [];
   
   // Calculate Subtotal
@@ -256,6 +301,7 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
     customerName: contactName,
     contactNumber,
     orderNumber,
+    orgId: resolvedOrgId,
   });
 
   // 3. Save Order to Database
@@ -265,8 +311,8 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
       `INSERT INTO coexistence.orders
          (order_number, shopify_draft_order_id, shopify_order_number, wa_number, contact_number, contact_name,
           delivery_address, items, subtotal, shipping_fee, total_amount, currency, status,
-          razorpay_payment_link_id, payment_link_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'unpaid', $13, $14)
+          razorpay_payment_link_id, payment_link_url, org_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'unpaid', $13, $14, $15)
        RETURNING *`,
       [
         orderNumber,
@@ -283,6 +329,7 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
         currency,
         rzpLink.id,
         rzpLink.short_url,
+        resolvedOrgId,
       ]
     );
     orderRow = rows[0];

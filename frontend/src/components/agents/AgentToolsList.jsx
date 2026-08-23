@@ -12,7 +12,7 @@ import HttpToolConfig from './HttpToolConfig.jsx';
  */
 const TOOL_TYPES = [
   { type: 'google_sheets', label: 'Google Sheets', desc: 'Read, append, or update rows in a sheet.',
-    icon: FileSpreadsheet, iconColor: '#0F7A38', iconBg: '#E6F4EA' },
+    icon: FileSpreadsheet, iconColor: '#FF5A00', iconBg: '#FFF0E6' },
   { type: 'http_request', label: 'HTTP request', desc: 'Call an external API / device / webhook.',
     icon: Globe, iconColor: '#2563EB', iconBg: '#E6EEFC' },
 ];
@@ -177,7 +177,7 @@ function ToolRow({ tool, busy, onToggle, onEdit, onRemove }) {
       </div>
       <button onClick={onToggle} disabled={busy} title={tool.isEnabled ? 'Disable' : 'Enable'}
         style={iconBtn}>
-        <Power size={14} color={tool.isEnabled ? '#0F7A38' : C.textMuted} />
+        <Power size={14} color={tool.isEnabled ? '#FF5A00' : C.textMuted} />
       </button>
       <button onClick={onEdit} disabled={busy}
         style={{ ...iconBtn, fontSize: 12, fontWeight: 600, padding: '6px 10px' }}>

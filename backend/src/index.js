@@ -33,6 +33,8 @@ const { router: aiModelsRouter } = require('./routes/aiModels');
 const { router: eventsRouter } = require('./routes/events');
 const { router: dashboardRouter } = require('./routes/dashboard');
 const { router: pipelinesRouter } = require('./routes/pipelines');
+const organizationsRouter = require('./routes/organizations');
+const { tenantContext } = require('./middleware/tenantContext');
 const { adminRouter: mcpAdminRouter, apiRouter: mcpApiRouter, ensureMcpTables } = require('./routes/mcp');
 const razorpayWebhookRouter = require('./routes/razorpayWebhook');
 const orderStatusWebhookRouter = require('./routes/orderStatusWebhook');
@@ -146,26 +148,28 @@ app.all('/api/mcp/http/:key', mcpHttpHandler);
 // Auth routes (public)
 app.use('/api', authRouter);
 
-// Protected routes
-app.use('/api', authMiddleware, messagesRouter);
-app.use('/api', authMiddleware, categoriesRouter);
-app.use('/api', authMiddleware, contactFieldsRouter);
-app.use('/api', authMiddleware, usersRouter);
-app.use('/api', authMiddleware, uploadsRouter);
-app.use('/api', authMiddleware, templatesRouter);
-app.use('/api', authMiddleware, broadcastsRouter);
-app.use('/api', authMiddleware, chatbotsRouter);
-app.use('/api', authMiddleware, mediaRouter);
-app.use('/api', authMiddleware, mediaLibraryRouter);
-app.use('/api', authMiddleware, whatsappAccountsRouter);
-app.use('/api', authMiddleware, googleIntegrationsRouter);
-app.use('/api', authMiddleware, agentsRouter);
-app.use('/api', authMiddleware, agentConversationRouter);
-app.use('/api', authMiddleware, mcpAdminRouter);
-app.use('/api', authMiddleware, aiModelsRouter);
-app.use('/api', authMiddleware, eventsRouter);
-app.use('/api', authMiddleware, dashboardRouter);
-app.use('/api', authMiddleware, pipelinesRouter);
+// Protected routes (Authenticated + Tenant-scoped)
+app.use('/api', authMiddleware, tenantContext);
+app.use('/api/organizations', organizationsRouter);
+app.use('/api', messagesRouter);
+app.use('/api', categoriesRouter);
+app.use('/api', contactFieldsRouter);
+app.use('/api', usersRouter);
+app.use('/api', uploadsRouter);
+app.use('/api', templatesRouter);
+app.use('/api', broadcastsRouter);
+app.use('/api', chatbotsRouter);
+app.use('/api', mediaRouter);
+app.use('/api', mediaLibraryRouter);
+app.use('/api', whatsappAccountsRouter);
+app.use('/api', googleIntegrationsRouter);
+app.use('/api', agentsRouter);
+app.use('/api', agentConversationRouter);
+app.use('/api', mcpAdminRouter);
+app.use('/api', aiModelsRouter);
+app.use('/api', eventsRouter);
+app.use('/api', dashboardRouter);
+app.use('/api', pipelinesRouter);
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -272,12 +276,12 @@ async function start() {
   setInterval(runTemplateSync, TEMPLATE_SYNC_MS).unref(); // every 10 min (gated by pending count)
 
   const server = app.listen(PORT, () => {
-    console.log(`[ForgeChat] Backend running on port ${PORT}`);
+    console.log(`[Synaptic Chat] Backend running on port ${PORT}`);
   });
 
   // Graceful shutdown so BullMQ marks in-flight jobs as stalled (not lost)
   const shutdown = async (sig) => {
-    console.log(`[ForgeChat] ${sig} received, draining…`);
+    console.log(`[Synaptic Chat] ${sig} received, draining…`);
     server.close(() => {});
     await shutdownMediaQueue();
     await shutdownSendQueue();

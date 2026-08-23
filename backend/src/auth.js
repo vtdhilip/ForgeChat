@@ -5,9 +5,8 @@ const pool = require('./db');
 const { effectivePages } = require('./permissions');
 
 // Build the full session for a user: identity + role + the resolved page list
-// + the WhatsApp numbers they're assigned to. The frontend uses `pages` to
-// gate nav/routes and `role` to decide admin-only UI.
-async function loadUserSession(userId) {
+// + the WhatsApp numbers they're assigned to + multi-tenant organizations.
+async function loadUserSession(userId, requestedOrgId = null) {
   const { rows } = await pool.query(
     `SELECT id, username, email, display_name, role, permissions, is_active, last_login_at
        FROM coexistence.forgecrm_users WHERE id = $1`,
@@ -19,6 +18,38 @@ async function loadUserSession(userId) {
     `SELECT wa_number FROM coexistence.user_wa_assignments WHERE user_id = $1`,
     [userId]
   );
+
+  // Load organizations for this user
+  const isSuperAdmin = u.role === 'admin';
+  let orgsQuery = `
+    SELECT o.id, o.name, o.slug, o.plan, o.settings, o.is_active,
+           om.role AS member_role
+      FROM coexistence.organizations o
+  `;
+  if (isSuperAdmin) {
+    orgsQuery += `
+      LEFT JOIN coexistence.organization_members om ON om.org_id = o.id AND om.user_id = $1
+     ORDER BY o.created_at ASC
+    `;
+  } else {
+    orgsQuery += `
+      JOIN coexistence.organization_members om ON om.org_id = o.id AND om.user_id = $1
+     WHERE o.is_active = true
+     ORDER BY o.created_at ASC
+    `;
+  }
+
+  const { rows: orgRows } = await pool.query(orgsQuery, [userId]).catch(() => ({ rows: [] }));
+
+  let activeOrg = null;
+  if (orgRows.length > 0) {
+    if (requestedOrgId) {
+      activeOrg = orgRows.find(o => String(o.id) === String(requestedOrgId) || o.slug === requestedOrgId) || orgRows[0];
+    } else {
+      activeOrg = orgRows[0];
+    }
+  }
+
   return {
     id: u.id,
     username: u.username,
@@ -29,6 +60,22 @@ async function loadUserSession(userId) {
     permissions: u.permissions || null,
     pages: Array.from(effectivePages({ role: u.role, permissions: u.permissions })),
     assignedWaNumbers: waRows.map(r => r.wa_number),
+    organizations: orgRows.map(o => ({
+      id: o.id,
+      name: o.name,
+      slug: o.slug,
+      plan: o.plan,
+      settings: o.settings || {},
+      role: o.member_role || (isSuperAdmin ? 'owner' : 'viewer'),
+    })),
+    activeOrg: activeOrg ? {
+      id: activeOrg.id,
+      name: activeOrg.name,
+      slug: activeOrg.slug,
+      plan: activeOrg.plan,
+      settings: activeOrg.settings || {},
+      role: activeOrg.member_role || (isSuperAdmin ? 'owner' : 'viewer'),
+    } : null,
   };
 }
 
@@ -172,7 +219,8 @@ router.post('/auth/login', async (req, res) => {
 // GET /api/auth/me
 router.get('/auth/me', authMiddleware, async (req, res) => {
   try {
-    const session = await loadUserSession(req.user.id);
+    const activeOrgId = req.cookies?.forgecrm_active_org || req.headers['x-org-id'] || null;
+    const session = await loadUserSession(req.user.id, activeOrgId);
     if (!session) {
       res.clearCookie(COOKIE_NAME);
       return res.status(401).json({ error: 'User not found' });

@@ -52,19 +52,18 @@ export default function SetupWizard({ onComplete }) {
         flexDirection: 'column', justifyContent: 'center', padding: '48px 64px',
         position: 'relative', overflow: 'hidden',
       }}>
-        <div style={{ position: 'absolute', top: '-20%', right: '-10%', width: '60%', height: '60%',
-          background: 'radial-gradient(circle, rgba(220,38,38,0.15) 0%, transparent 70%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: '-20%', left: '-10%', width: '50%', height: '50%',
-          background: 'radial-gradient(circle, rgba(83,74,183,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 480 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 40 }}>
             <img src="/forgemind-logo.gif" alt="" style={{ width: 40, height: 40, borderRadius: 9 }} />
+            <div style={{ fontSize: 24, fontWeight: 800, color: C.headerText }}>
+              Synaptic <span style={{ color: C.primary }}>Chat</span>
+            </div>
           </div>
           <h1 style={{ fontSize: 42, fontWeight: 800, color: C.headerText, letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: 20 }}>
             Let's get you set up
           </h1>
           <p style={{ fontSize: 16, color: C.headerMuted, lineHeight: 1.6, marginBottom: 40 }}>
-            Create your admin account to finish installing. After this you'll connect your WhatsApp account and start managing conversations — all from here.
+            Create your admin account to finish installing Synaptic Chat. After this you'll connect your WhatsApp account and start managing conversations — all from here.
           </p>
         </div>
       </div>

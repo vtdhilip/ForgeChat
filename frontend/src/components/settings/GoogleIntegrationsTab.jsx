@@ -125,9 +125,9 @@ export default function GoogleIntegrationsTab() {
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '10px 14px', borderRadius: 8, marginBottom: 16,
-            background: banner.kind === 'ok' ? '#ECFDF5' : '#FCEBEB',
-            color: banner.kind === 'ok' ? '#065F46' : '#A32D2D',
-            border: `1px solid ${banner.kind === 'ok' ? '#A7F3D0' : '#FBC8C8'}`,
+            background: banner.kind === 'ok' ? '#FFF0E6' : '#FCEBEB',
+            color: banner.kind === 'ok' ? '#FF5A00' : '#A32D2D',
+            border: `1px solid ${banner.kind === 'ok' ? '#FFCCA8' : '#FBC8C8'}`,
             fontSize: 13, fontFamily: FONT, fontWeight: 500,
           }}>
             {banner.kind === 'ok' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
@@ -292,7 +292,7 @@ function CredentialsCard({ creds, onSaved }) {
         <Key size={16} color={C.primary} />
         <div style={{ fontWeight: 600, fontSize: 14, color: C.text }}>Google API credentials</div>
         {configured
-          ? <span style={{ fontSize: 11, padding: '2px 8px', background: '#dcfce7', color: '#15803d', borderRadius: 6, fontWeight: 700, letterSpacing: '.02em' }}>SAVED</span>
+          ? <span style={{ fontSize: 11, padding: '2px 8px', background: '#FFF0E6', color: '#FF5A00', borderRadius: 6, fontWeight: 700, letterSpacing: '.02em' }}>SAVED</span>
           : <span style={{ fontSize: 11, padding: '2px 8px', background: '#fef9c3', color: '#854d0e', borderRadius: 6, fontWeight: 700, letterSpacing: '.02em' }}>REQUIRED</span>}
       </div>
 
@@ -336,7 +336,7 @@ function CredentialsCard({ creds, onSaved }) {
       {okMsg && (
         <div style={{
           padding: '8px 12px', borderRadius: 8, margin: '0 0 12px',
-          background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0', fontSize: 12,
+          background: '#FFF0E6', color: '#FF5A00', border: '1px solid #FFCCA8', fontSize: 12,
         }}>
           {okMsg}
         </div>
@@ -522,7 +522,7 @@ function HealthDot({ status }) {
       title={ok ? 'Healthy' : (status || 'Unknown')}
       style={{
         width: 8, height: 8, borderRadius: '50%',
-        background: ok ? '#10B981' : '#EF4444', flexShrink: 0, marginTop: 5,
+        background: ok ? '#FF5A00' : '#EF4444', flexShrink: 0, marginTop: 5,
       }}
     />
   );

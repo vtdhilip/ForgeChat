@@ -1233,7 +1233,6 @@ async function executeHandoffNode(client, executionId, node, context) {
   };
   return logStep(client, executionId, node, {}, output, 'success');
 }
-
 async function executeAINode(client, executionId, node, context) {
   const output = {
     aiTask: node.aiTask,
@@ -1245,36 +1244,188 @@ async function executeAINode(client, executionId, node, context) {
   return logStep(client, executionId, node, {}, output, 'success');
 }
 
-async function executeAPINode(client, executionId, node, context) {
+async function executeCheckoutNode(client, executionId, node, context) {
+  const { processOrderCheckout } = require('../services/checkout');
+  const contactObj = context.contact || {};
+  const deliveryAddress = node.address || getFieldValue('delivery_address', contactObj, context) || getFieldValue('address', contactObj, context) || context.message_body || '';
+  const shippingFee = parseFloat(node.shipping_fee || node.shippingFee || 60);
+  const customSubtotal = node.subtotal ? parseFloat(node.subtotal) : null;
+  const orgId = context.trigger_data?.org_id || null;
+
+  const checkoutResult = await processOrderCheckout({
+    contactNumber: context.contact_number,
+    contactName: contactObj.name || contactObj.profile_name || 'Customer',
+    deliveryAddress,
+    orderData: context.trigger_data?.order_data || (customSubtotal ? { total_amount: customSubtotal } : null),
+    shippingFee,
+    customSubtotal,
+    waNumber: context.trigger_data?.wa_number,
+    orgId,
+  });
+
+  if (!context.extra_lookup) context.extra_lookup = {};
+  Object.assign(context.extra_lookup, {
+    order_number: checkoutResult.order_number,
+    order_id: checkoutResult.order_number,
+    subtotal: checkoutResult.subtotal,
+    shipping_fee: checkoutResult.shipping_fee,
+    total_amount: checkoutResult.total_amount,
+    order_total: checkoutResult.total_amount,
+    payment_link: checkoutResult.payment_link,
+    shopify_draft_order_id: checkoutResult.shopify_draft_order_id || '',
+  });
+
   const output = {
-    method: node.method || 'POST',
-    url: node.url,
-    note: 'API call logged (actual HTTP request not implemented)',
+    order_number: checkoutResult.order_number,
+    total_amount: checkoutResult.total_amount,
+    payment_link: checkoutResult.payment_link,
+    subtotal: checkoutResult.subtotal,
+    shipping_fee: checkoutResult.shipping_fee,
+    note: `Razorpay checkout created: Order #${checkoutResult.order_number}`,
   };
-  return logStep(client, executionId, node, {}, output, 'success');
+
+  return logStep(client, executionId, node, { customSubtotal, shippingFee }, output, 'success');
 }
 
-async function executeSubflowNode(client, executionId, node, context) {
-  const output = {
-    subflowId: node.subflowId,
-    waitMode: node.waitMode || 'async',
-    note: 'Subflow trigger logged (actual subflow execution not implemented)',
+async function executeShiprocketNode(client, executionId, node, context) {
+  const { createShiprocketOrder } = require('../services/shiprocket');
+  const orgId = context.trigger_data?.org_id || null;
+  const contactObj = context.contact || {};
+  const orderNumber = context.extra_lookup?.order_number || node.orderNumber || `ORD-${Date.now()}`;
+  const address = node.address || getFieldValue('delivery_address', contactObj, context) || getFieldValue('address', contactObj, context) || '';
+
+  const orderPayload = {
+    order_number: orderNumber,
+    contact_name: contactObj.name || contactObj.profile_name || 'Customer',
+    contact_number: context.contact_number,
+    delivery_address: address,
+    subtotal: context.extra_lookup?.subtotal || node.subtotal || 359,
+    shipping_fee: context.extra_lookup?.shipping_fee || node.shipping_fee || 60,
+    org_id: orgId,
   };
-  return logStep(client, executionId, node, {}, output, 'success');
+
+  const shiprocketRes = await createShiprocketOrder(orderPayload, orgId);
+  const output = {
+    shiprocket: shiprocketRes,
+    order_number: orderNumber,
+    note: shiprocketRes.success ? `Shiprocket order #${shiprocketRes.shiprocket_order_id} created` : `Shiprocket: ${shiprocketRes.error || 'Failed'}`,
+  };
+
+  return logStep(client, executionId, node, orderPayload, output, shiprocketRes.success ? 'success' : 'error', shiprocketRes.error);
 }
 
-// Executable node types. Trigger + Send Message are the linear core; Condition
-// (yes/no branch), Smart Delay (non-blocking send delay), and Action (Add Tag /
-// Remove Tag etc.) are dispatched by the walker too — see walkFrom for how a
-// Condition's matched result selects the 'yes'/'no' outgoing edge.
-// handoff/ai/api/subflow handlers remain defined but unwired (not in the
-// builder palette); an unknown type is skipped by the walker, not failed.
+async function executeSheetsSyncNode(client, executionId, node, context) {
+  const { appendOrderToGoogleSheet } = require('../services/googleSheets');
+  const orgId = context.trigger_data?.org_id || null;
+  const contactObj = context.contact || {};
+
+  const orderPayload = {
+    order_number: context.extra_lookup?.order_number || `ORD-${Date.now()}`,
+    contact_name: contactObj.name || contactObj.profile_name || 'Customer',
+    contact_number: context.contact_number,
+    subtotal: context.extra_lookup?.subtotal || '0.00',
+    shipping_fee: context.extra_lookup?.shipping_fee || '60.00',
+    total_amount: context.extra_lookup?.total_amount || '0.00',
+    delivery_address: getFieldValue('delivery_address', contactObj, context) || '',
+    payment_link: context.extra_lookup?.payment_link || '',
+    status: context.extra_lookup?.payment_link ? 'unpaid' : 'lead',
+    org_id: orgId,
+  };
+
+  const success = await appendOrderToGoogleSheet(orderPayload, orgId);
+  const output = {
+    synced: success,
+    order_number: orderPayload.order_number,
+    note: success ? 'Appended row to Google Sheet' : 'Google Sheets sync skipped or failed',
+  };
+
+  return logStep(client, executionId, node, orderPayload, output, success ? 'success' : 'skipped');
+}
+
+async function executeFlowNode(client, executionId, node, context) {
+  const { resolveAccount, insertPendingRow } = require('../services/messageSender');
+  const { enqueueSend } = require('../queue/sendQueue');
+  const fromPhone = context.trigger_data?.wa_number;
+  const { account, error: accErr } = await resolveAccount({
+    accountId: node.whatsappAccountId,
+    fromPhoneNumber: fromPhone,
+  });
+
+  if (accErr || !account) {
+    throw new Error(`automation flow: ${accErr || 'no account for ' + fromPhone}`);
+  }
+
+  const flowId = node.flowId || process.env.WHATSAPP_FLOW_ID || '';
+  const flowCta = node.flowCta || 'Enter Delivery Address';
+  const flowScreen = node.flowScreen || 'ADDRESS_FORM';
+  const flowToken = `flow_tok_${context.contact_number}_${Date.now()}`;
+
+  const bodyText = node.bodyText || 'Please provide your delivery address below to complete your order.';
+  const payload = {
+    type: 'interactive',
+    interactive: {
+      type: 'flow',
+      header: node.headerText ? { type: 'text', text: node.headerText } : undefined,
+      body: { text: resolveVariables(bodyText, context) },
+      footer: node.footerText ? { text: node.footerText } : undefined,
+      action: {
+        name: 'flow',
+        parameters: {
+          flow_message_version: '3',
+          flow_token: flowToken,
+          flow_id: flowId,
+          flow_cta: flowCta,
+          flow_action: 'navigate',
+          flow_action_payload: {
+            screen: flowScreen,
+            data: {
+              contact_name: context.contact?.name || '',
+              phone: context.contact_number || '',
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const localId = await insertPendingRow({
+    account, toNumber: context.contact_number, messageType: 'interactive',
+    messageBody: `[WhatsApp Flow: ${flowCta}] ${bodyText}`,
+  });
+
+  await enqueueSend({
+    kind: 'flow',
+    accountId: account.id,
+    to: String(context.contact_number).replace(/\D/g, ''),
+    localMessageId: localId,
+    payload,
+  });
+
+  const output = {
+    flowId,
+    flowCta,
+    flowToken,
+    deliveryStatus: 'queued',
+    note: `WhatsApp Flow "${flowCta}" dispatched to ${context.contact_number}`,
+  };
+
+  return logStep(client, executionId, node, { flowId, flowCta }, output, 'success');
+}
+
+// Executable node types
 const NODE_HANDLERS = {
   trigger: executeTriggerNode,
   message: executeMessageNode,
   condition: executeConditionNode,
   delay: executeDelayNode,
   action: executeActionNode,
+  checkout: executeCheckoutNode,
+  razorpay: executeCheckoutNode,
+  shiprocket: executeShiprocketNode,
+  sheets_sync: executeSheetsSyncNode,
+  google_sheets: executeSheetsSyncNode,
+  flow: executeFlowNode,
+  whatsapp_flow: executeFlowNode,
 };
 
 // ─── Graph Walker ────────────────────────────────────────────────────
@@ -1307,16 +1458,9 @@ async function executeAutomation(client, automation, context) {
   const execution = rows[0];
 
   try {
-    // Find trigger node
-    const triggerNode = nodes.find(n => n.type === 'trigger');
-    if (!triggerNode) {
-      throw new Error('No trigger node found in automation');
-    }
+    const triggerNode = nodes.find(n => n.type === 'trigger') || nodes[0];
+    await logStep(client, execution.id, triggerNode, {}, { triggerData: context.trigger_data }, 'success');
 
-    // Execute trigger
-    await executeTriggerNode(client, execution.id, triggerNode, context);
-
-    // Walk graph starting from nodes connected to trigger
     const triggerEdges = edges.filter(e => e.from === triggerNode.id);
     const startNodeId = triggerEdges.length > 0 ? triggerEdges[0].to : null;
     const visited = new Set([triggerNode.id]);
@@ -1335,10 +1479,7 @@ async function executeAutomation(client, automation, context) {
   }
 }
 
-// Walks the graph DFS from startNodeId. Returns { paused: boolean } —
-// paused=true means a node signalled `step.__pauseExecution`, in which case
-// the walker exited without finishing and the caller should NOT mark the
-// execution as success (the pausing handler already flipped it to 'paused').
+// Walks the graph DFS from startNodeId with bypass support for disabled nodes
 async function walkFrom(client, executionId, nodes, edges, startNodeId, context, visited = new Set()) {
   let currentNodeId = startNodeId;
   while (currentNodeId && !visited.has(currentNodeId)) {
@@ -1346,19 +1487,28 @@ async function walkFrom(client, executionId, nodes, edges, startNodeId, context,
     const node = nodes.find(n => n.id === currentNodeId);
     if (!node) break;
 
+    // Check if node is disabled by user/admin
+    const isDisabled = node.disabled === true || node.isEnabled === false || node.data?.disabled === true || node.data?.isEnabled === false;
+    if (isDisabled) {
+      await logStep(
+        client, executionId, node, {},
+        { note: `Node "${node.title || node.name || node.type}" is disabled — bypassed.` },
+        'bypassed'
+      );
+      const fromEdges = edges.filter(e => e.from === currentNodeId);
+      const nextEdge = fromEdges.find(e => !e.fromHandle || e.fromHandle === 'default') || fromEdges[0] || null;
+      currentNodeId = nextEdge ? nextEdge.to : null;
+      continue;
+    }
+
     const handler = NODE_HANDLERS[node.type];
     let step = null;
     if (handler) {
       step = await handler(client, executionId, node, context);
-      // A Message node with waitForReply pauses the execution; exit cleanly —
-      // the handler already flipped the execution row to status='paused'.
       if (step && step.__pauseExecution) {
         return { paused: true };
       }
     } else {
-      // Unknown / unwired node type (e.g. handoff/ai/api/subflow — defined but
-      // not in the builder palette). Skip it and continue down the chain rather
-      // than failing the whole run.
       await logStep(
         client, executionId, node, {},
         { note: `Skipped unsupported node type "${node.type}".` },
@@ -1366,10 +1516,6 @@ async function walkFrom(client, executionId, nodes, edges, startNodeId, context,
       );
     }
 
-    // Pick the outgoing edge. A Condition node routes to its 'yes' (matched) or
-    // 'no' (not-matched) handle based on the evaluated result logged by
-    // executeConditionNode; every other node follows its default edge (falling
-    // back to the first edge so a node with only a branch handle still moves on).
     let fromHandle = 'default';
     if (node.type === 'condition' && step && step.output_data) {
       fromHandle = step.output_data.matched ? 'yes' : 'no';

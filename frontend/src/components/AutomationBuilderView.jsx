@@ -13,7 +13,7 @@ const C = {
   rowDiv:"var(--c-border)", divider:"var(--c-border)", inputBorder:"var(--c-borderDark)",
   text1:"var(--c-text)", text2:"var(--c-text)", text3:"var(--c-textSecondary)", text4:"var(--c-textSecondary)", text5:"var(--c-textMuted)",
   muted:"var(--c-textMuted)", ghost:"var(--c-textMuted)", ph:"var(--c-textMuted)",
-  brand:"#0F6E56", brandBright:"#1D9E75", brandDark:"#085041", brandBg:"#E1F5EE", brandTint:"#F0FAF6",
+  brand:"#FF5A00", brandBright:"#FF7A33", brandDark:"#CC4800", brandBg:"#FFF0E6", brandTint:"#FFF8F5",
   purple:"#534AB7", purpleBg:"#EEEDFE", purpleDark:"#3C3489",
   red:"#A32D2D", redBg:"#FCEBEB", redDark:"#791F1F",
   orange:"#E65100", orangeBg:"#FFF3E0", orangeBorder:"#FFE0B2", orangeText:"#A04400",
@@ -398,6 +398,10 @@ const NT = {
   condition:{ bg:"#FFF5F5", border:"#F0C0C0", color:"#C44A4A", accent:"#A32D2D", label:"CONDITION",     icon:IC.branch },
   action:  { bg:"#FAF0F0", border:"#D8B0B0", color:"#8B3A3A", accent:"#A32D2D", label:"ACTION",        icon:IC.tag },
   delay:   { bg:"#FDF8F5", border:"#E0C8B8", color:"#A05040", accent:"#A32D2D", label:"DELAY",         icon:IC.clock },
+  checkout:{ bg:"#FFF7ED", border:"#FFD8A8", color:"#C2410C", accent:"#EA580C", label:"RAZORPAY CHECKOUT", icon:IC.bag },
+  shiprocket:{ bg:"#EFF6FF", border:"#BFDBFE", color:"#1D4ED8", accent:"#2563EB", label:"SHIPROCKET SHIPMENT", icon:IC.bcast },
+  flow:    { bg:"#FAF5FF", border:"#E9D5FF", color:"#7E22CE", accent:"#9333EA", label:"WHATSAPP FLOW", icon:IC.doc },
+  sheets_sync:{ bg:"#FFF0E6", border:"#FFCCA8", color:"#FF5A00", accent:"#FF5A00", label:"GOOGLE SHEETS SYNC", icon:IC.chart },
   api:     { bg:"#F5ECEC", border:"#C8A0A0", color:"#7A2A2A", accent:"#791F1F", label:"API",           icon:IC.api },
   handoff: { bg:"#FDF0F0", border:"#E0B8B8", color:"#B04040", accent:"#A32D2D", label:"HUMAN HANDOFF", icon:IC.agent },
   ai:      { bg:"#F8F0F0", border:"#D0B0B0", color:"#8B3A3A", accent:"#A32D2D", label:"AI",            icon:IC.ai },
@@ -409,6 +413,10 @@ export const nodeH = (n) => {
   if (n.type === "action") return Math.max(96, 44 + (n.actions?.length||0) * 54);
   if (n.type === "condition") return 118;
   if (n.type === "message") return 102;
+  if (n.type === "checkout") return 106;
+  if (n.type === "shiprocket") return 106;
+  if (n.type === "flow") return 106;
+  if (n.type === "sheets_sync") return 106;
   return 96;
 };
 
@@ -976,9 +984,21 @@ const BLOCK_GROUPS = [
     { name:"Keyword Trigger",  type:"trigger", icon:IC.zap,   desc:"User sends a keyword",
       defaults:{ triggerKind:"keyword", keyword:"PRICE", matchType:"exact", caseSensitive:false, summary:"Trigger when contact sends a specific keyword" } },
   ]},
-  { title:"Messages", color:C.blue, items:[
+  { title:"Messages & Forms", color:C.blue, items:[
     { name:"Send Message", type:"message", icon:IC.msg,   desc:"Send a WhatsApp message",
       defaults:{ templateId:"", summary:"Send a Meta-approved WhatsApp template" } },
+    { name:"WhatsApp Flow", type:"flow", icon:IC.doc, desc:"Native address & form popup",
+      defaults:{ flowId:"", flowCta:"Enter Delivery Address", flowScreen:"ADDRESS_FORM", summary:"Open in-chat WhatsApp Form to collect address" } },
+  ]},
+  { title:"E-Commerce & Orders", color:"#EA580C", items:[
+    { name:"Razorpay Checkout", type:"checkout", icon:IC.bag, desc:"Create order & payment link",
+      defaults:{ subtotal:"", shippingFee:60, summary:"Generate draft order and live Razorpay payment link" } },
+  ]},
+  { title:"Fulfillment & Logistics", color:"#2563EB", items:[
+    { name:"Shiprocket Shipment", type:"shiprocket", icon:IC.bcast, desc:"Create shipment in Shiprocket",
+      defaults:{ summary:"Auto-create shipment and request courier pickup in Shiprocket" } },
+    { name:"Google Sheets Sync", type:"sheets_sync", icon:IC.chart, desc:"Push order row to Google Sheets",
+      defaults:{ summary:"Append customer & order details to external Google Sheet" } },
   ]},
   { title:"Logic", color:C.orange, items:[
     { name:"Condition",   type:"condition", icon:IC.branch, desc:"If / else branch",
@@ -995,7 +1015,7 @@ const BLOCK_GROUPS = [
 ];
 
 const BlockLibrary = ({ onAddBlock }) => {
-  const [openG, setOpenG] = useState({ Triggers:true, Messages:true, Logic:true, Actions:true, "API & Integrations":true, AI:true, Workflows:true });
+  const [openG, setOpenG] = useState({ Triggers:true, "Messages & Forms":true, "E-Commerce & Orders":true, "Fulfillment & Logistics":true, Logic:true, Actions:true, "API & Integrations":true, AI:true, Workflows:true });
   const [q, setQ] = useState("");
   return (
     <aside style={{ width:236, borderRight:`1px solid ${C.cardBorder}`, background:"#FAFAF7", display:"flex", flexDirection:"column", flexShrink:0 }}>
@@ -1886,7 +1906,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
       <div style={{ background:C.sectionBg, border:`1px solid ${C.innerBorder}`, borderRadius:10, padding:6, marginBottom:14, maxHeight:260, overflowY:"auto" }}>
         {teamMembers.map(m => {
           const isSel = assigned.includes(m.id);
-          const dot = m.avail === "online" ? "#1D9E75" : m.avail === "away" ? "#E5A100" : "#9C9B92";
+          const dot = m.avail === "online" ? "#FF5A00" : m.avail === "away" ? "#E5A100" : "#9C9B92";
           return (
             <button key={m.id}
               onClick={()=>{
@@ -2905,6 +2925,82 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
       </div>
     </>);
   }
+  else if (node.type === "checkout") {
+    content = (<>
+      <Field label="Custom Subtotal (₹)" hint="Leave blank to use WhatsApp Cart total / catalog item amount automatically.">
+        <Input type="number" value={node.subtotal || ""} onChange={(e)=>onUpdateNode(node.id, { subtotal: e.target.value })} placeholder="Auto (from cart / lead)"/>
+      </Field>
+      <Field label="Shipping Fee (₹)" hint="Added to the order subtotal.">
+        <Input type="number" value={node.shippingFee ?? 60} onChange={(e)=>onUpdateNode(node.id, { shippingFee: e.target.value })} placeholder="60"/>
+      </Field>
+      <Field label="Order Description / Notes">
+        <Input value={node.orderDesc || ""} onChange={(e)=>onUpdateNode(node.id, { orderDesc: e.target.value })} placeholder="e.g. Order checkout via WhatsApp"/>
+      </Field>
+      <Alert kind="info">This node generates a dynamic <strong>Draft Order</strong> and a live <strong>Razorpay Payment Link</strong>. Upstream/downstream message nodes can interpolate <code>{"{{payment_link}}"}</code> and <code>{"{{order_number}}"}</code>.</Alert>
+      <div style={{ display:"flex", gap:6, marginTop:14 }}>
+        <Btn kind="primary" style={{ flex:1, justifyContent:"center" }} onClick={onSaveAndClose}>Save</Btn>
+        <Btn kind="ghost" icon={IC.copy(13)} onClick={()=>onDuplicateNode(node.id)}>Duplicate</Btn>
+        <Btn kind="danger" icon={IC.trash(13)} onClick={()=>onDeleteNode(node.id)}>Delete</Btn>
+      </div>
+    </>);
+  }
+  else if (node.type === "shiprocket") {
+    content = (<>
+      <Field label="Default Pickup Location" hint="Registered warehouse in your Shiprocket account.">
+        <Input value={node.pickupLocation || ""} onChange={(e)=>onUpdateNode(node.id, { pickupLocation: e.target.value })} placeholder="e.g. warehouse or Primary"/>
+      </Field>
+      <Field label="Order Notes / Courier Instruction">
+        <Input value={node.notes || ""} onChange={(e)=>onUpdateNode(node.id, { notes: e.target.value })} placeholder="WhatsApp Prepaid Order"/>
+      </Field>
+      <Alert kind="info">Creates an order shipment in <strong>Shiprocket</strong> using the contact's delivery address and order details. Credentials can be configured under Settings → Integrations.</Alert>
+      <div style={{ display:"flex", gap:6, marginTop:14 }}>
+        <Btn kind="primary" style={{ flex:1, justifyContent:"center" }} onClick={onSaveAndClose}>Save</Btn>
+        <Btn kind="ghost" icon={IC.copy(13)} onClick={()=>onDuplicateNode(node.id)}>Duplicate</Btn>
+        <Btn kind="danger" icon={IC.trash(13)} onClick={()=>onDeleteNode(node.id)}>Delete</Btn>
+      </div>
+    </>);
+  }
+  else if (node.type === "flow") {
+    content = (<>
+      <Field label="Meta Flow ID" hint="Leave blank to use default Flow ID from Organization Settings.">
+        <Input value={node.flowId || ""} onChange={(e)=>onUpdateNode(node.id, { flowId: e.target.value })} placeholder="e.g. 123456789012345"/>
+      </Field>
+      <Field label="CTA Button Text" hint="Text shown on the in-chat button.">
+        <Input value={node.flowCta || "Enter Delivery Address"} onChange={(e)=>onUpdateNode(node.id, { flowCta: e.target.value })} placeholder="Enter Delivery Address"/>
+      </Field>
+      <Field label="Target Screen Name">
+        <Input value={node.flowScreen || "ADDRESS_FORM"} onChange={(e)=>onUpdateNode(node.id, { flowScreen: e.target.value })} placeholder="ADDRESS_FORM"/>
+      </Field>
+      <Field label="Introductory Message Text">
+        <Textarea rows={3} value={node.bodyText || ""} onChange={(e)=>onUpdateNode(node.id, { bodyText: e.target.value })} placeholder="Please provide your delivery address to complete your order."/>
+      </Field>
+      <Alert kind="info">Opens an interactive native <strong>Meta Flow</strong> popup form directly inside WhatsApp for instant delivery address capture.</Alert>
+      <div style={{ display:"flex", gap:6, marginTop:14 }}>
+        <Btn kind="primary" style={{ flex:1, justifyContent:"center" }} onClick={onSaveAndClose}>Save</Btn>
+        <Btn kind="ghost" icon={IC.copy(13)} onClick={()=>onDuplicateNode(node.id)}>Duplicate</Btn>
+        <Btn kind="danger" icon={IC.trash(13)} onClick={()=>onDeleteNode(node.id)}>Delete</Btn>
+      </div>
+    </>);
+  }
+  else if (node.type === "sheets_sync") {
+    content = (<>
+      <Field label="Sync Event Type">
+        <select value={node.syncEvent || "order"} onChange={(e)=>onUpdateNode(node.id, { syncEvent: e.target.value })} style={{ width:"100%", padding:"8px 10px", borderRadius:6, border:`1px solid ${C.inputBorder}`, fontSize:12, fontFamily:"'DM Sans'" }}>
+          <option value="order">Sync Order & Payment Details</option>
+          <option value="lead">Sync Contact & Lead Profile</option>
+        </select>
+      </Field>
+      <Field label="Custom Webhook URL Override" hint="Leave blank to use the Google Sheet Webhook URL saved in Settings → Integrations.">
+        <Input value={node.webhookUrl || ""} onChange={(e)=>onUpdateNode(node.id, { webhookUrl: e.target.value })} placeholder="https://script.google.com/macros/s/..."/>
+      </Field>
+      <Alert kind="info">Appends a live row to your connected <strong>Google Spreadsheet</strong>. Automatically updates status to PAID when Razorpay payment succeeds.</Alert>
+      <div style={{ display:"flex", gap:6, marginTop:14 }}>
+        <Btn kind="primary" style={{ flex:1, justifyContent:"center" }} onClick={onSaveAndClose}>Save</Btn>
+        <Btn kind="ghost" icon={IC.copy(13)} onClick={()=>onDuplicateNode(node.id)}>Duplicate</Btn>
+        <Btn kind="danger" icon={IC.trash(13)} onClick={()=>onDeleteNode(node.id)}>Delete</Btn>
+      </div>
+    </>);
+  }
 
   if (content === null) {
     content = (<>
@@ -3093,7 +3189,7 @@ const BuilderToolbar = ({ automationName, status, onBack, onSave, isDirty, savin
       ) : (
         <Btn kind="ghost" icon={IC.check(13)} disabled
           title="No unsaved changes"
-          style={{ color: C.green || '#0F6E56', borderColor: C.green || '#0F6E56', opacity: .85, pointerEvents: 'none', cursor: 'default' }}>
+          style={{ color: C.green || '#FF5A00', borderColor: C.green || '#FF5A00', opacity: .85, pointerEvents: 'none', cursor: 'default' }}>
           Saved
         </Btn>
       )}
@@ -3397,9 +3493,9 @@ const PhonePreview = ({ onClose, nodes = [], edges = [], templates = [], teamMem
               <div style={{ background:"#075E54", paddingTop:50, paddingBottom:8, paddingLeft:12, paddingRight:12, color:"#fff", fontFamily:"-apple-system, 'SF Pro Display', system-ui, sans-serif", flexShrink:0, position:"relative", zIndex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                   <span style={{ color:"#fff", fontSize:20, lineHeight:1, opacity:.9, marginRight:-2 }}>‹</span>
-                  <div style={{ width:30, height:30, borderRadius:"50%", background:`linear-gradient(135deg,${C.brandBright},${C.brand})`, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700, flexShrink:0 }}>F</div>
+                  <div style={{ width:30, height:30, borderRadius:"50%", background:"#FF5A00", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700, flexShrink:0 }}>S</div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Forge Automation</div>
+                    <div style={{ fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Synaptic Automation</div>
                     <div style={{ fontSize:10, opacity:.82, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ended ? "Conversation ended" : waiting ? "Waiting for your reply" : "typing…"}</div>
                   </div>
                   <svg width="20" height="14" viewBox="0 0 20 14" style={{ display:"block", flexShrink:0 }}>
@@ -3453,7 +3549,7 @@ const PhonePreview = ({ onClose, nodes = [], edges = [], templates = [], teamMem
                 })}
                 {ended && (
                   <div style={{ display:"flex", justifyContent:"center", marginTop:10 }}>
-                    <span style={{ background:"#E1F5EE", color:C.brandDark, fontSize:9, padding:"3px 10px", borderRadius:99, fontWeight:700, letterSpacing:".06em", textTransform:"uppercase" }}>End of flow</span>
+                    <span style={{ background:"#FFF0E6", color:C.brandDark, fontSize:9, padding:"3px 10px", borderRadius:99, fontWeight:700, letterSpacing:".06em", textTransform:"uppercase" }}>End of flow</span>
                   </div>
                 )}
               </div>
@@ -4377,8 +4473,8 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
           font-style: italic;
         }
         .rename-input:focus {
-          border-color: #1D9E75 !important;
-          box-shadow: 0 0 0 3px #E1F5EE !important;
+          border-color: #FF5A00 !important;
+          box-shadow: 0 0 0 3px #FFF0E6 !important;
         }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }

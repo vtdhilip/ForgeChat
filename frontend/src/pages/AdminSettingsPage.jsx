@@ -4,22 +4,24 @@ import {
   LogOut, Trash2, FormInput, Users as UsersIcon, Shield, Copy,
   ArrowLeft, Plus, X, ChevronLeft, Eye, EyeOff,
   Loader2, MessageSquare, Key, Check, Globe,
-  PlugZap, Terminal, ChevronRight,
+  PlugZap, Terminal, ChevronRight, Building2,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { C, FONT, MONO, maskPhone } from '../constants.js';
 import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
 import SearchableSelect from '../components/SearchableSelect.jsx';
 import IntegrationsTab from '../components/settings/IntegrationsTab.jsx';
+import OrganizationsTab from '../components/settings/OrganizationsTab.jsx';
 import { useTableSelection, SelectAllCheckbox, RowCheckbox, BulkDeleteButton, runBulkDelete } from '../components/TableSelection.jsx';
 
 const TABS = [
   { key: 'general', label: 'General', icon: Settings },
+  { key: 'organizations', label: 'Brands & Workspaces', icon: Building2 },
   { key: 'tags', label: 'Tags', icon: Tag },
   { key: 'category', label: 'Category', icon: FolderOpen },
   { key: 'fields', label: 'Fields', icon: FormInput },
   { key: 'whatsapp-accounts', label: 'WhatsApp Accounts', icon: MessageSquare },
-  { key: 'integrations', label: 'Integrations', icon: Globe },
+  { key: 'integrations', label: 'Integrations & Env', icon: Globe },
   { key: 'mcp', label: 'MCP Tools', icon: PlugZap },
   { key: 'users', label: 'Users', icon: UsersIcon },
 ];
@@ -876,7 +878,7 @@ function WhatsappAccountsTab() {
                     {(() => {
                       const h = acc.healthStatus || 'unknown';
                       const styles = {
-                        healthy: { bg: '#E1F5EE', fg: '#0F6E56', label: 'Healthy' },
+                        healthy: { bg: '#FFF0E6', fg: '#FF5A00', label: 'Healthy' },
                         invalid_token: { bg: '#FCEBEB', fg: '#A32D2D', label: 'Token expired' },
                         rate_limited: { bg: '#FFF3E0', fg: '#E65100', label: 'Rate limited' },
                         unknown_error: { bg: '#FCEBEB', fg: '#A32D2D', label: 'Error' },
@@ -893,8 +895,8 @@ function WhatsappAccountsTab() {
                   <td style={tdStyle}>
                     <span style={{
                       fontSize: 11, padding: '3px 8px', borderRadius: 99, fontWeight: 600,
-                      background: acc.isActive ? '#E1F5EE' : '#EEEDE8',
-                      color: acc.isActive ? '#0F6E56' : C.textMuted,
+                      background: acc.isActive ? '#FFF0E6' : '#EEEDE8',
+                      color: acc.isActive ? '#FF5A00' : C.textMuted,
                     }}>
                       {acc.isActive ? 'Active' : 'Inactive'}
                     </span>
@@ -1212,8 +1214,8 @@ function RoleBadge({ role }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
       padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700,
-      background: isAdmin ? '#EEF2FF' : '#ECFDF5',
-      color: isAdmin ? '#4338CA' : '#047857',
+      background: isAdmin ? '#EEF2FF' : '#FFF0E6',
+      color: isAdmin ? '#4338CA' : '#FF5A00',
     }}>
       <Shield size={11} /> {ROLE_LABEL[role] || role}
     </span>
@@ -1365,8 +1367,8 @@ function UsersTab({ currentUser }) {
                           style={{
                             padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700, border: 'none',
                             cursor: isSelf ? 'default' : 'pointer',
-                            background: u.isActive !== false ? '#ECFDF5' : '#F3F4F6',
-                            color: u.isActive !== false ? '#047857' : '#6B7280',
+                            background: u.isActive !== false ? '#FFF0E6' : '#F3F4F6',
+                            color: u.isActive !== false ? '#FF5A00' : '#6B7280',
                           }}>
                           {u.isActive !== false ? 'Active' : 'Disabled'}
                         </button>
@@ -1965,6 +1967,7 @@ export default function AdminSettingsPage({ onLogout, onNavigate, subParts = [],
           onAddFormShown={() => setShowCategoryAddForm(false)}
         />
       );
+      case 'organizations': return <OrganizationsTab user={user} onNavigate={navigate} />;
       case 'fields': return <FieldsTab fields={fields} onRefresh={refresh} />;
       case 'whatsapp-accounts': return <WhatsappAccountsTab />;
       case 'integrations': return <IntegrationsTab subParts={subParts} navigate={navigate} />;

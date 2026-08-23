@@ -97,7 +97,7 @@ function StatusPill({ status, active }) {
   const variant = status === 'draft'
     ? { bg: '#FEF3C7', color: '#92400E', label: 'Draft' }
     : active
-      ? { bg: '#ECFDF5', color: '#065F46', label: 'Active' }
+      ? { bg: '#FFF0E6', color: '#FF5A00', label: 'Active' }
       : { bg: '#F2F2EC', color: C.textSecondary, label: 'Paused' };
   return (
     <span style={{

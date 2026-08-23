@@ -134,7 +134,7 @@ export default function AgentRunsViewer({ agentId }) {
 }
 
 function StatusIcon({ status }) {
-  if (status === 'completed') return <CheckCircle2 size={14} color="#0F7A38" />;
+  if (status === 'completed') return <CheckCircle2 size={14} color="#FF5A00" />;
   if (status === 'failed')    return <AlertCircle size={14} color={C.primary} />;
   if (status === 'capped')    return <AlertCircle size={14} color="#B45309" />;
   return <Clock size={14} color={C.textMuted} />;
@@ -151,8 +151,8 @@ function Steps({ run }) {
       {run.finalReply && (
         <div style={{
           padding: '10px 12px', borderRadius: 8,
-          background: '#ECFDF5', border: '1px solid #A7F3D0',
-          fontSize: 12, color: '#065F46', display: 'flex', gap: 8, alignItems: 'flex-start',
+          background: '#FFF0E6', border: '1px solid #FFCCA8',
+          fontSize: 12, color: '#FF5A00', display: 'flex', gap: 8, alignItems: 'flex-start',
         }}>
           <MessageSquare size={13} style={{ marginTop: 1 }} />
           <div>
@@ -175,7 +175,7 @@ function Step({ step }) {
       background: C.cardBg, border: `1px solid ${C.border}`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <Icon size={13} color={isTool ? '#0F7A38' : '#534AB7'} />
+        <Icon size={13} color={isTool ? '#FF5A00' : '#534AB7'} />
         <div style={{ fontSize: 12, fontWeight: 700, color: titleColor, flex: 1 }}>
           {isTool ? `Tool: ${step.toolType}` : 'LLM call'}
           {step.status === 'error' && ' · error'}

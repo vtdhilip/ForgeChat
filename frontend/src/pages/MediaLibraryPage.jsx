@@ -10,14 +10,14 @@ import SearchableSelect from '../components/SearchableSelect.jsx';
 const TYPE_META = {
   image:    { Icon: ImageIcon, label: 'Image',    color: '#3B82F6' },
   video:    { Icon: Video,     label: 'Video',    color: '#8B5CF6' },
-  audio:    { Icon: Music,     label: 'Audio',    color: '#10B981' },
+  audio:    { Icon: Music,     label: 'Audio',    color: '#FF5A00' },
   document: { Icon: FileText,  label: 'Document', color: '#F59E0B' },
 };
 
 const STATUS_META = {
   pending: { label: 'Not synced',   bg: '#F3F4F6', fg: '#6B7280' },
   syncing: { label: 'Syncing…',     bg: '#EFF6FF', fg: '#3B82F6' },
-  synced:  { label: 'Synced',       bg: '#ECFDF5', fg: '#059669' },
+  synced:  { label: 'Synced',       bg: '#FFF0E6', fg: '#FF5A00' },
   failed:  { label: 'Failed',       bg: '#FEF2F2', fg: '#DC2626' },
   expired: { label: 'Expired',      bg: '#FEF3C7', fg: '#B45309' },
 };
@@ -213,7 +213,7 @@ export default function MediaLibraryPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, right: 24, padding: '10px 16px',
-          background: toast.kind === 'err' ? '#991B1B' : toast.kind === 'ok' ? '#065F46' : '#111',
+          background: toast.kind === 'err' ? '#991B1B' : toast.kind === 'ok' ? '#1A1A1A' : '#111',
           color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600,
           boxShadow: C.shadowLg, zIndex: 1000,
         }}>{toast.msg}</div>
@@ -328,9 +328,9 @@ function MediaRow({ media, account, syncingKey, isLast, onSync, onToggleAutoResy
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '7px 12px', borderRadius: 6,
-          background: media.autoResync ? '#ECFDF5' : 'var(--c-hover)',
-          color: media.autoResync ? '#059669' : '#6B7280',
-          border: `1px solid ${media.autoResync ? '#A7F3D0' : '#E5E7EB'}`,
+          background: media.autoResync ? '#FFF0E6' : 'var(--c-hover)',
+          color: media.autoResync ? '#FF5A00' : '#6B7280',
+          border: `1px solid ${media.autoResync ? '#FFCCA8' : '#E5E7EB'}`,
           cursor: 'pointer', fontFamily: FONT, fontSize: 12, fontWeight: 600,
         }}
       >

@@ -270,7 +270,7 @@ export default function AgentEditor({ agentId, waAccounts, user, navigate, onDon
             <div style={{ fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: '-.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {form.name || 'Agent'}
             </div>
-            <div style={{ fontSize: 12, color: form.isActive ? '#0F6E56' : C.textMuted, fontWeight: 600, marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: form.isActive ? '#FF5A00' : C.textMuted, fontWeight: 600, marginTop: 2 }}>
               {form.isActive ? '● Live — answering WhatsApp messages' : 'Inactive — not answering messages'}
             </div>
           </div>
@@ -299,9 +299,9 @@ export default function AgentEditor({ agentId, waAccounts, user, navigate, onDon
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '10px 20px', borderRadius: 99,
-              border: form.isActive ? '1.5px solid #1D9E75' : 'none',
-              background: form.isActive ? '#E1F5EE' : '#1D9E75',
-              color: form.isActive ? '#0F6E56' : '#fff',
+              border: form.isActive ? '1.5px solid #FF5A00' : 'none',
+              background: form.isActive ? '#FFF0E6' : '#FF5A00',
+              color: form.isActive ? '#FF5A00' : '#fff',
               fontSize: 13.5, fontFamily: FONT, fontWeight: 700, whiteSpace: 'nowrap',
               cursor: (togglingLive || (!form.isActive && !hasModelSelected)) ? 'not-allowed' : 'pointer',
               opacity: (togglingLive || (!form.isActive && !hasModelSelected)) ? 0.6 : 1,
@@ -309,7 +309,7 @@ export default function AgentEditor({ agentId, waAccounts, user, navigate, onDon
           >
             {togglingLive
               ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-              : <span style={{ width: 8, height: 8, borderRadius: 99, background: form.isActive ? '#1D9E75' : '#fff' }} />}
+              : <span style={{ width: 8, height: 8, borderRadius: 99, background: form.isActive ? '#FF5A00' : '#fff' }} />}
             {togglingLive ? 'Saving…' : (form.isActive ? 'Live' : 'Go Live')}
           </button>
           </div>
