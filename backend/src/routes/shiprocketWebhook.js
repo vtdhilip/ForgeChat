@@ -99,61 +99,43 @@ router.post('/', async (req, res) => {
       ).catch(() => {});
     }
 
-    // 4. Send WhatsApp Notification to Customer
+    // 4. Send WhatsApp Notification to Customer (via Template to work outside 24h window)
     const targetPhone = order?.contact_number || cleanPhone(body.customer_phone || body.phone);
     const targetName = order?.contact_name || body.customer_name || 'Customer';
     const waNumber = order?.wa_number || null;
 
     if (targetPhone) {
-      let messageText = '';
-      if (normalizedStatus === 'Delivered') {
-        messageText =
-          `🎉 *Order Delivered!*\n\n` +
-          `Hi ${targetName}, your order *#${orderNumber}* has been successfully delivered.\n\n` +
-          `Thank you for shopping with LINNDEN! If you have any feedback, simply reply to this chat. ⭐`;
-      } else if (normalizedStatus === 'Shipped' || normalizedStatus === 'Out for Delivery') {
-        messageText =
-          `🚚 *Your Order #${orderNumber} Has Been Shipped!*\n\n` +
-          `Hi ${targetName}, great news! Your package is on its way.\n\n` +
-          (courier ? `📦 *Courier:* ${courier}\n` : '') +
-          (awb ? `🔖 *Tracking / AWB:* ${awb}\n` : '') +
-          (trackingUrl ? `🔗 *Live Tracking Link:*\n👉 ${trackingUrl}\n\n` : '\n') +
-          `Thank you for shopping with LINNDEN! 🙏`;
+      let acctQuery = `SELECT id FROM coexistence.whatsapp_accounts WHERE is_active = true`;
+      const params = [];
+      if (waNumber) {
+        acctQuery += ` AND wa_number = $1`;
+        params.push(waNumber);
       }
+      acctQuery += ` LIMIT 1`;
 
-      if (messageText) {
-        let acctQuery = `SELECT id FROM coexistence.whatsapp_accounts WHERE is_active = true`;
-        const params = [];
-        if (waNumber) {
-          acctQuery += ` AND wa_number = $1`;
-          params.push(waNumber);
-        }
-        acctQuery += ` LIMIT 1`;
+      const { rows: acctRows } = await pool.query(acctQuery, params);
+      if (acctRows.length > 0) {
+        const accountId = acctRows[0].id;
+        const { sendShippingNotification, sendDeliveryNotification } = require('../services/orderNotifications');
 
-        const { rows: acctRows } = await pool.query(acctQuery, params);
-        if (acctRows.length > 0) {
-          const accountId = acctRows[0].id;
-          const localId = `sr-status-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-          await pool.query(
-            `INSERT INTO coexistence.chat_history
-               (message_id, phone_number_id, wa_number, contact_number, to_number,
-                direction, message_type, message_body, status, timestamp)
-             SELECT $1, phone_number_id, wa_number, $2, $2,
-                    'outgoing', 'text', $3, 'queued', NOW()
-               FROM coexistence.whatsapp_accounts WHERE id = $4`,
-            [localId, targetPhone, messageText, accountId]
-          ).catch(() => {});
-
-          await enqueueSend({
-            kind: 'text',
+        if (normalizedStatus === 'Delivered') {
+          await sendDeliveryNotification({
             accountId,
-            to: targetPhone,
-            localMessageId: localId,
-            payload: { body: messageText, previewUrl: true },
+            targetPhone,
+            targetName,
+            orderNumber,
           });
-
-          console.log(`[shiprocket-webhook] ✅ WhatsApp notification sent to ${targetPhone} for Order ${orderNumber} (${normalizedStatus})`);
+        } else if (normalizedStatus === 'Shipped' || normalizedStatus === 'Out for Delivery') {
+          await sendShippingNotification({
+            accountId,
+            targetPhone,
+            targetName,
+            orderNumber,
+            courier,
+            awb,
+            trackingUrl,
+            status: normalizedStatus,
+          });
         }
       }
     }

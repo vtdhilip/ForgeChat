@@ -1,7 +1,7 @@
 const pool = require('../db');
 
-function formatProductItems(product, items) {
-  if (product && typeof product === 'string' && !product.trim().startsWith('[')) {
+async function formatProductItems(product, items) {
+  if (product && typeof product === 'string' && !product.trim().startsWith('[') && !product.trim().startsWith('{')) {
     return product;
   }
   let raw = items || product;
@@ -9,13 +9,31 @@ function formatProductItems(product, items) {
   if (typeof raw === 'string') {
     try { raw = JSON.parse(raw); } catch { return raw; }
   }
+  if (!Array.isArray(raw) && typeof raw === 'object' && raw !== null) {
+    raw = [raw];
+  }
   if (Array.isArray(raw) && raw.length > 0) {
-    return raw.map(it => {
+    const { resolveProductName } = require('./productCatalog');
+    const parts = [];
+    for (const it of raw) {
       const qty = parseInt(it.quantity, 10) || 1;
-      const name = it.title || it.name || it.product_name || 'LINNDEN Premium Modal Trunks';
+      let name = it.title || it.name || it.product_name;
+      if (!name || name === 'Product' || /^\d+$/.test(name)) {
+        if (it.product_retailer_id) {
+          try {
+            name = await resolveProductName(it.product_retailer_id);
+          } catch (e) {
+            name = 'LINNDEN Premium Modal Trunks';
+          }
+        }
+      }
+      if (!name || /^\d+$/.test(name)) {
+        name = 'LINNDEN Premium Modal Trunks';
+      }
       const price = it.item_price || it.price ? ` (₹${it.item_price || it.price})` : '';
-      return `${qty}x ${name}${price}`;
-    }).join(', ');
+      parts.push(`${qty}x ${name}${price}`);
+    }
+    return parts.join(', ');
   }
   return '1x LINNDEN Premium Modal Trunks';
 }
@@ -31,13 +49,19 @@ async function appendOrderToGoogleSheet(order) {
   }
 
   try {
+    const productFormatted = await formatProductItems(order.product, order.items);
     const payload = {
       action: 'append_order',
       date: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
       order_number: order.order_number || order.order_id || '',
       customer_name: order.contact_name || order.name || 'WhatsApp Customer',
       phone: order.contact_number || order.phone || '',
-      product_items: formatProductItems(order.product, order.items),
+      product_items: productFormatted,
+      items: productFormatted,
+      product: productFormatted,
+      order_items: productFormatted,
+      item_name: productFormatted,
+      products: productFormatted,
       subtotal: order.subtotal || '0.00',
       shipping: order.shipping_fee || '60.00',
       total_amount: order.total_amount || order.order_total || '0.00',
@@ -53,7 +77,7 @@ async function appendOrderToGoogleSheet(order) {
     });
 
     if (res.ok) {
-      console.log(`[googleSheets] Order #${order.order_number} appended to Google Sheet!`);
+      console.log(`[googleSheets] Order #${order.order_number} (${productFormatted}) appended to Google Sheet!`);
       return true;
     } else {
       console.warn(`[googleSheets] Webhook returned HTTP ${res.status}`);

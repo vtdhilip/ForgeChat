@@ -162,47 +162,69 @@ router.post('/sheet-status-update', async (req, res) => {
     }
     const accountId = acctRows[0].id;
 
-    // 4. Construct message text
-    let messageText = customMessage;
-    if (!messageText) {
-      let itemsText = '';
-      if (order?.items) {
-        try {
-          const items = Array.isArray(order.items) ? order.items : JSON.parse(order.items);
-          itemsText = items.map(i => `• ${i.quantity || 1}x ${i.title || i.name || 'Item'}`).join('\n');
-        } catch {}
+    // 4. Send via Template (to work outside 24h window) or fallback
+    const { sendShippingNotification, sendDeliveryNotification } = require('../services/orderNotifications');
+    const norm = String(rawStatus || '').toUpperCase();
+
+    if (!customMessage && norm.includes('DELIVER')) {
+      await sendDeliveryNotification({
+        accountId,
+        targetPhone,
+        targetName,
+        orderNumber,
+      });
+    } else if (!customMessage && (norm.includes('SHIP') || norm.includes('TRANSIT') || norm.includes('OUT FOR DELIVERY') || norm.includes('PICKED'))) {
+      await sendShippingNotification({
+        accountId,
+        targetPhone,
+        targetName,
+        orderNumber,
+        courier: courier || order?.courier || '',
+        awb: trackingNumber || order?.tracking_number || '',
+        trackingUrl: trackingUrl || order?.tracking_url || '',
+        status: rawStatus,
+      });
+    } else {
+      let messageText = customMessage;
+      if (!messageText) {
+        let itemsText = '';
+        if (order?.items) {
+          try {
+            const items = Array.isArray(order.items) ? order.items : JSON.parse(order.items);
+            itemsText = items.map(i => `• ${i.quantity || 1}x ${i.title || i.name || 'Item'}`).join('\n');
+          } catch {}
+        }
+
+        messageText = buildStatusMessage({
+          status: rawStatus,
+          orderNumber: orderNumber || 'N/A',
+          customerName: targetName,
+          courier: courier || order?.courier || '',
+          trackingNumber: trackingNumber || order?.tracking_number || '',
+          trackingUrl: trackingUrl || order?.tracking_url || '',
+          itemsText,
+        });
       }
 
-      messageText = buildStatusMessage({
-        status: rawStatus,
-        orderNumber: orderNumber || 'N/A',
-        customerName: targetName,
-        courier: courier || order?.courier || '',
-        trackingNumber: trackingNumber || order?.tracking_number || '',
-        trackingUrl: trackingUrl || order?.tracking_url || '',
-        itemsText,
+      const localId = `order-status-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      await pool.query(
+        `INSERT INTO coexistence.chat_history
+           (message_id, phone_number_id, wa_number, contact_number, to_number,
+            direction, message_type, message_body, status, timestamp)
+         SELECT $1, phone_number_id, wa_number, $2, $2,
+                'outgoing', 'text', $3, 'queued', NOW()
+           FROM coexistence.whatsapp_accounts WHERE id = $4`,
+        [localId, targetPhone, messageText, accountId]
+      ).catch(() => {});
+
+      await enqueueSend({
+        kind: 'text',
+        accountId,
+        to: targetPhone,
+        localMessageId: localId,
+        payload: { body: messageText, previewUrl: true },
       });
     }
-
-    // 5. Save to chat_history and enqueue WhatsApp message
-    const localId = `order-status-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    await pool.query(
-      `INSERT INTO coexistence.chat_history
-         (message_id, phone_number_id, wa_number, contact_number, to_number,
-          direction, message_type, message_body, status, timestamp)
-       SELECT $1, phone_number_id, wa_number, $2, $2,
-              'outgoing', 'text', $3, 'queued', NOW()
-         FROM coexistence.whatsapp_accounts WHERE id = $4`,
-      [localId, targetPhone, messageText, accountId]
-    ).catch(() => {});
-
-    await enqueueSend({
-      kind: 'text',
-      accountId,
-      to: targetPhone,
-      localMessageId: localId,
-      payload: { body: messageText, previewUrl: true },
-    });
 
     console.log(`[order-status] ✅ WhatsApp status notification queued for ${targetPhone} (Order #${orderNumber}, Status: ${rawStatus})`);
 

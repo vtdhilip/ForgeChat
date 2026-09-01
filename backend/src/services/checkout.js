@@ -207,6 +207,16 @@ async function processOrderCheckout({ contactNumber, contactName, deliveryAddres
 
   const orderNumber = await generateOrderNumber();
   const rawItems = orderData?.product_items || [];
+
+  // Resolve product friendly names if items only have product_retailer_id
+  const { resolveProductName } = require('./productCatalog');
+  for (const it of rawItems) {
+    if (!it.title && !it.name) {
+      const pName = await resolveProductName(it.product_retailer_id);
+      it.name = pName;
+      it.title = pName;
+    }
+  }
   
   // Calculate Subtotal
   let subtotal = 0;
