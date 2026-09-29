@@ -16,15 +16,14 @@ export default function AboutUsPage() {
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <img
-          src="/forgemind-logo.gif"
-          alt="Forgemind"
-          style={{ height: 64, width: 64, objectFit: 'contain', marginBottom: 14 }}
+          src="/synaptic-logo.svg"
+          alt="Synaptic Chat"
+          style={{ height: 64, width: 64, objectFit: 'contain', marginBottom: 14, borderRadius: 14 }}
           onError={e => { e.currentTarget.style.display = 'none'; }}
         />
-        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>About FORGEMIND <span style={{ color: C.primary }}>AI</span></h1>
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>About SYNAPTIC <span style={{ color: C.primary }}>CHAT</span></h1>
         <p style={{ fontSize: 14, color: C.textSecondary, margin: '10px auto 0', maxWidth: 540, lineHeight: 1.6 }}>
-          Forgemind builds practical AI automation tools — including this WhatsApp CRM.
-          Follow us and explore our work through the links below.
+          Synaptic Chat is an enterprise WhatsApp CRM, multi-agent AI assistant, and automation platform.
         </p>
       </div>
 
@@ -79,7 +78,7 @@ export default function AboutUsPage() {
       </div>
 
       <div style={{ textAlign: 'center', marginTop: 36, fontSize: 12, color: C.textMuted }}>
-        © {new Date().getFullYear()} Forgemind · Powered by FMOS
+        © {new Date().getFullYear()} Synaptic Chat · Powered by Synaptic OS
       </div>
     </div>
   );

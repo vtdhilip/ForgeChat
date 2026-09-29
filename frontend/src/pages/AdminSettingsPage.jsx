@@ -1784,7 +1784,7 @@ function McpToolsTab() {
             <ol style={{ fontSize: 13, color: C.text, lineHeight: 1.8, paddingLeft: 18, margin: '0 0 10px' }}>
               <li>Enable the master switch + capabilities above, then <b>Generate a key</b> (the key-created popup shows a ready-to-paste URL).</li>
               <li>In Claude (web/desktop/mobile) → <b>Settings → Connectors → Add custom connector</b>, paste the URL below with your key appended.</li>
-              <li>Say <i>“create a ForgeChat agent”</i> — it asks the setup questions.</li>
+              <li>Say <i>“create a Synaptic Chat agent”</i> — it asks the setup questions.</li>
             </ol>
             {install?.remoteUrl && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, gap: 8 }}>
@@ -1802,9 +1802,9 @@ function McpToolsTab() {
             {/* Local (stdio) */}
             <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, margin: '0 0 6px' }}>Option 2 — Local server (Claude Desktop config)</div>
             <ol style={{ fontSize: 13, color: C.text, lineHeight: 1.8, paddingLeft: 18, margin: '0 0 16px' }}>
-              <li>On the machine running Claude Desktop, install the server: <code style={{ fontFamily: MONO, fontSize: 12 }}>cd {install?.serverPath?.replace('/src/index.js', '') || '/root/FORGECHAT/mcp-server'} && npm install</code></li>
+              <li>On the machine running Claude Desktop, install the server: <code style={{ fontFamily: MONO, fontSize: 12 }}>cd {install?.serverPath?.replace('/src/index.js', '') || '/root/synaptic-chat/mcp-server'} && npm install</code></li>
               <li>Open Claude Desktop → <b>Settings → Developer → Edit Config</b> and add the block below (paste your key).</li>
-              <li>Fully quit and reopen Claude Desktop. The <code style={{ fontFamily: MONO, fontSize: 12 }}>forgechat-agents</code> tools appear.</li>
+              <li>Fully quit and reopen Claude Desktop. The <code style={{ fontFamily: MONO, fontSize: 12 }}>synaptic-chat-agents</code> tools appear.</li>
             </ol>
 
             {install && (
@@ -1838,7 +1838,7 @@ function McpToolsTab() {
               <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>API key created</div>
             </div>
             <div style={{ fontSize: 13, color: C.textSecondary, marginBottom: 12, lineHeight: 1.6 }}>
-              Copy this key now — it won’t be shown again. Store it in your Claude Desktop config as <code style={{ fontFamily: MONO }}>FORGECHAT_API_KEY</code>.
+              Copy this key now — it won’t be shown again. Store it in your Claude Desktop config as <code style={{ fontFamily: MONO }}>SYNAPTIC_CHAT_API_KEY</code>.
             </div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
               <code style={{ flex: 1, ...codeBox, whiteSpace: 'nowrap', overflowX: 'auto', padding: '12px 14px' }}>{freshKey.key}</code>

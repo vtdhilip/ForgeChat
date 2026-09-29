@@ -179,7 +179,7 @@ export default function GoogleIntegrationsTab() {
       <DeleteConfirmModal
         open={!!pendingDelete}
         title="Disconnect Google account?"
-        message={pendingDelete ? `This will revoke ForgeChat's access to ${pendingDelete.accountLabel}. Any agent tools using this account will stop working until reconnected.` : ''}
+        message={pendingDelete ? `This will revoke Synaptic Chat's access to ${pendingDelete.accountLabel}. Any agent tools using this account will stop working until reconnected.` : ''}
         confirmText="Disconnect"
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => handleDisconnect(pendingDelete.id)}

@@ -2020,7 +2020,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
         icon: IC.qr, color: "#6A3FAF", bg: "#E8E0F8", border: "#B5A4DD",
         source: "wa", sourceLabel: "WhatsApp inbound message webhook",
         title: "QR code scan",
-        body: "Technically identical to a click-to-chat link — the QR encodes a wa.me URL with a pre-filled message that identifies the scan source. WhatsApp doesn't know it came from a QR; ForgeChat attributes it via the pre-filled text."
+        body: "Technically identical to a click-to-chat link — the QR encodes a wa.me URL with a pre-filled message that identifies the scan source. WhatsApp doesn't know it came from a QR; Synaptic Chat attributes it via the pre-filled text."
       },
       newContact: {
         icon: IC.user, color: C.purpleDark, bg: C.purpleBg, border: "#C7C2F4",
@@ -3399,7 +3399,7 @@ const PhonePreview = ({ onClose, nodes = [], edges = [], templates = [], teamMem
                   <span style={{ color:"#fff", fontSize:20, lineHeight:1, opacity:.9, marginRight:-2 }}>‹</span>
                   <div style={{ width:30, height:30, borderRadius:"50%", background:`linear-gradient(135deg,${C.brandBright},${C.brand})`, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:12, fontWeight:700, flexShrink:0 }}>F</div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Forge Automation</div>
+                    <div style={{ fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>Synaptic Automation</div>
                     <div style={{ fontSize:10, opacity:.82, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ended ? "Conversation ended" : waiting ? "Waiting for your reply" : "typing…"}</div>
                   </div>
                   <svg width="20" height="14" viewBox="0 0 20 14" style={{ display:"block", flexShrink:0 }}>

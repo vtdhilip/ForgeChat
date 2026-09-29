@@ -418,7 +418,7 @@ export default function AgentEditor({ agentId, waAccounts, user, navigate, onDon
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', fontSize: 13, fontWeight: 600, color: C.text }}>
                     Update CRM (Contacts &amp; tags)
-                    <InfoDot text="When on, the agent can act on the chatting contact inside ForgeChat — save their name, add tags, and set custom fields — so enquiries land in your CRM, not just a sheet. The agent only ever touches the contact it's chatting with." />
+                    <InfoDot text="When on, the agent can act on the chatting contact inside Synaptic Chat — save their name, add tags, and set custom fields — so enquiries land in your CRM, not just a sheet. The agent only ever touches the contact it's chatting with." />
                   </div>
                   <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
                     Lets the agent set the contact's name, tags &amp; custom fields.

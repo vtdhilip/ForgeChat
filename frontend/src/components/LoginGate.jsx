@@ -67,9 +67,9 @@ export default function LoginGate({ onLogin }) {
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 480 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 40 }}>
             <img
-              src="/forgemind-logo.gif"
-              alt="ForgeMind Logo"
-              style={{ height: 56, width: 56, objectFit: 'contain', flexShrink: 0 }}
+              src="/synaptic-logo.svg"
+              alt="Synaptic Chat"
+              style={{ height: 56, width: 56, objectFit: 'contain', flexShrink: 0, borderRadius: 14 }}
               onError={e => { e.currentTarget.style.display = 'none'; }}
             />
             <div style={{ lineHeight: 1.15 }}>
@@ -79,7 +79,7 @@ export default function LoginGate({ onLogin }) {
                 letterSpacing: '-0.02em',
                 color: C.headerText,
               }}>
-                Forge<span style={{ color: C.primary }}>Chat</span>
+                Synaptic<span style={{ color: C.primary }}> Chat</span>
               </div>
               <div style={{
                 fontSize: 11,
@@ -89,7 +89,7 @@ export default function LoginGate({ onLogin }) {
                 textTransform: 'uppercase',
                 marginTop: 4,
               }}>
-                powered by FMOS
+                powered by Synaptic OS
               </div>
             </div>
           </div>
@@ -115,10 +115,7 @@ export default function LoginGate({ onLogin }) {
 
         </div>
 
-        <a
-          href="https://forgemind.in/"
-          target="_blank"
-          rel="noopener noreferrer"
+        <div
           style={{
             position: 'absolute',
             bottom: 32,
@@ -128,12 +125,10 @@ export default function LoginGate({ onLogin }) {
             color: '#52525b',
             letterSpacing: '.06em',
             textTransform: 'uppercase',
-            textDecoration: 'none',
-            cursor: 'pointer',
           }}
         >
-          FORGEMIND <span style={{ color: C.primary }}>AI</span>
-        </a>
+          SYNAPTIC <span style={{ color: C.primary }}>CHAT</span>
+        </div>
       </div>
 
       {/* Right form panel */}
@@ -189,7 +184,7 @@ export default function LoginGate({ onLogin }) {
               </div>
               <input
                 type="email"
-                placeholder="admin@forgemind.space"
+                placeholder="admin@synapticchat.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 autoFocus

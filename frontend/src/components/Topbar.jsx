@@ -96,14 +96,14 @@ export default function Topbar({ user, onLogout, onNavigate }) {
         }}
       >
         <img
-          src="/forgemind-logo.gif"
-          alt="ForgeMind"
-          style={{ height: 36, width: 36, objectFit: 'contain', flexShrink: 0 }}
+          src="/synaptic-logo.svg"
+          alt="Synaptic Chat"
+          style={{ height: 34, width: 34, objectFit: 'contain', flexShrink: 0, borderRadius: 8 }}
           onError={e => { e.currentTarget.style.display = 'none'; }}
         />
         <div style={{ lineHeight: 1.1 }}>
           <div style={{
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: 900,
             color: C.headerText,
             fontFamily: FONT,
@@ -114,7 +114,7 @@ export default function Topbar({ user, onLogout, onNavigate }) {
             alignItems: 'center',
             gap: 6,
           }}>
-            FORGE
+            SYNAPTIC
             <span style={{
               background: C.primary,
               color: '#fff',
@@ -134,7 +134,7 @@ export default function Topbar({ user, onLogout, onNavigate }) {
         {/* GitHub stars — opens this project's repo */}
         <button
           onClick={() => window.open(GITHUB_REPO_URL, '_blank', 'noopener,noreferrer')}
-          title="Star ForgeChat on GitHub"
+          title="Star Synaptic Chat on GitHub"
           style={{
             height: 36, borderRadius: 9, padding: '0 12px',
             background: C.headerSurface, border: `1.5px solid ${C.headerBorder}`,
