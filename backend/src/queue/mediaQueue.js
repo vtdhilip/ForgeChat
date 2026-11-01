@@ -8,7 +8,7 @@ const IORedis = require('ioredis');
 const { downloadOne } = require('../services/mediaDownloader');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
-const QUEUE_NAME = 'forgecrm-media';
+const QUEUE_NAME = 'synapticchat-media';
 const CONCURRENCY = parseInt(process.env.MEDIA_QUEUE_CONCURRENCY || '2', 10);
 const ATTEMPTS = parseInt(process.env.MEDIA_QUEUE_ATTEMPTS || '5', 10);
 const BACKOFF_MS = parseInt(process.env.MEDIA_QUEUE_BACKOFF_MS || '2000', 10);

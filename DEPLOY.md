@@ -1,10 +1,10 @@
-# ForgeChat — Deployment Guide
+# Synaptic Chat — Deployment Guide
 
-ForgeChat ships with a ready-to-run `docker-compose.yml`. For the normal install,
+Synaptic Chat ships with a ready-to-run `docker-compose.yml`. For the normal install,
 follow the **Deploy** section of [`README.md`](./README.md):
 
 ```bash
-git clone https://github.com/Forgemind-git/ForgeChat.git && cd ForgeChat
+git clone https://github.com/vtdhilipkumar/SynapticChat.git && cd SynapticChat
 
 # Server with a domain + automatic HTTPS (required for WhatsApp) — recommended:
 ./install.sh                               # asks for your domain, checks DNS/ports, deploys
@@ -73,9 +73,9 @@ first-run wizard handles it.
 ## 5. Host cron jobs (optional maintenance)
 
 ```cron
-0  3  * * *  cd /path/to/ForgeChat && docker compose exec -T forgecrm-backend node scripts/cleanupMedia.js
-0  */4 * * * cd /path/to/ForgeChat && docker compose exec -T forgecrm-backend node scripts/syncTemplates.js
-0  2  * * *  cd /path/to/ForgeChat && docker compose exec -T forgecrm-backend node scripts/syncTemplateAnalytics.js
+0  3  * * *  cd /path/to/synaptic-chat && docker compose exec -T forgecrm-backend node scripts/cleanupMedia.js
+0  */4 * * * cd /path/to/synaptic-chat && docker compose exec -T forgecrm-backend node scripts/syncTemplates.js
+0  2  * * *  cd /path/to/synaptic-chat && docker compose exec -T forgecrm-backend node scripts/syncTemplateAnalytics.js
 ```
 
 Without these you still get inbound webhooks + sends, but media disk grows, template
@@ -88,7 +88,7 @@ chats, contacts, templates, automations). Also keep the `secrets` volume — it 
 the key that decrypts those tokens.
 
 ```bash
-0 4 * * * cd /path/to/ForgeChat && docker compose exec -T forgecrm-db pg_dump -U postgres postgres | gzip > /srv/backups/forgechat-$(date +\%Y\%m\%d).sql.gz
+0 4 * * * cd /path/to/synaptic-chat && docker compose exec -T forgecrm-db pg_dump -U postgres postgres | gzip > /srv/backups/synapticchat-$(date +\%Y\%m\%d).sql.gz
 # + sync /srv/backups off-host
 ```
 

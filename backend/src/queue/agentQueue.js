@@ -8,7 +8,7 @@ const IORedis = require('ioredis');
 const { runAgent } = require('../engine/agentEngine');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
-const QUEUE_NAME = 'forgechat-agent';
+const QUEUE_NAME = 'synapticchat-agent';
 const CONCURRENCY = parseInt(process.env.AGENT_QUEUE_CONCURRENCY || '4', 10);
 const ATTEMPTS = parseInt(process.env.AGENT_QUEUE_ATTEMPTS || '2', 10);
 

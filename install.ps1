@@ -1,5 +1,5 @@
 <#
-  ForgeChat one-command installer — Windows (local / testing).
+  Synaptic Chat one-command installer — Windows (local / testing).
 
   Collapses the manual README steps into a single run: generates secrets,
   writes backend\.env, builds the images, starts the database, applies every
@@ -8,7 +8,7 @@
   Safe to re-run: it never overwrites an existing backend\.env, so your
   secrets are preserved. Delete backend\.env first to regenerate them.
 
-  Run in PowerShell, from inside the forgechat folder:
+  Run in PowerShell, from inside the synaptic-chat folder:
       .\install.ps1
 
   (For a real 24/7 deployment with a domain, use a Linux server + install.sh.)
@@ -27,11 +27,11 @@ try { docker version *> $null } catch {
 }
 try { docker compose version *> $null } catch { Die "Docker Compose v2 isn't available. Update Docker Desktop, then re-run." }
 
-Say "ForgeChat installer (Windows - local mode, http://localhost)"
+Say "Synaptic Chat installer (Windows - local mode, http://localhost)"
 
 # ── 1. Inputs ───────────────────────────────────────────────────────────────
-$ADMIN_EMAIL = Read-Host "Admin email [admin@forgechat.local]"
-if (-not $ADMIN_EMAIL) { $ADMIN_EMAIL = 'admin@forgechat.local' }
+$ADMIN_EMAIL = Read-Host "Admin email [admin@synapticchat.local]"
+if (-not $ADMIN_EMAIL) { $ADMIN_EMAIL = 'admin@synapticchat.local' }
 $pwSecure = Read-Host "Admin password [Admin@123456]" -AsSecureString
 $ADMIN_PASSWORD = [System.Net.NetworkCredential]::new('', $pwSecure).Password
 if (-not $ADMIN_PASSWORD) { $ADMIN_PASSWORD = 'Admin@123456' }
@@ -129,7 +129,7 @@ OK "Database ready."
 docker compose up -d forgecrm-backend forgecrm-frontend
 
 Write-Host ""
-OK "ForgeChat is up!"
+OK "Synaptic Chat is up!"
 Write-Host "  Open:   http://localhost"
 Write-Host "  Login:  $ADMIN_EMAIL"
 if ($VERIFY) { Write-Host "  Webhook verify token: $VERIFY   (save this - you'll need it when connecting WhatsApp)" }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // One-time / on-demand backfill: download all media for recent messages
 // that haven't been stored yet. Run inside the backend container:
-//   docker exec forgecrm-backend node scripts/backfillMedia.js
+//   docker exec synapticchat-forgecrm-backend-1 node scripts/backfillMedia.js
 // Optional flags: --days 30 --limit 500
 
 require('dotenv').config();

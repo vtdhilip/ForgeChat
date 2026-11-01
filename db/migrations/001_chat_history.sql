@@ -1,4 +1,4 @@
--- 001: ForgeChat Chat History Schema
+-- 001: Synaptic Chat Chat History Schema
 -- Stores WhatsApp messages received via Meta Cloud API webhooks
 
 CREATE SCHEMA IF NOT EXISTS coexistence;

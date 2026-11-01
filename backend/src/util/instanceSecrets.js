@@ -1,6 +1,6 @@
 // Zero-config secret bootstrap.
 //
-// Resolves JWT_SECRET and FORGECRM_ENCRYPTION_KEY so the app boots with no
+// Resolves JWT_SECRET and SYNAPTICCHAT_ENCRYPTION_KEY so the app boots with no
 // manual .env editing. Precedence per secret:
 //   (1) a strong value already in the environment  -> use it (never persisted)
 //   (2) a value persisted in <DATA_DIR>/instance.json -> load into env
@@ -22,6 +22,7 @@ const crypto = require('crypto');
 
 // Placeholders shipped in docs / old .env.example — treat as "not set".
 const WEAK = new Set([
+  'synapticchat-dev-secret-change-me',
   'forgecrm-dev-secret-change-me',
   'change-this-to-a-random-string',
   'change-this-to-another-random-string',
@@ -30,7 +31,7 @@ const WEAK = new Set([
 const isStrong = (v) => typeof v === 'string' && v.length >= 32 && !WEAK.has(v);
 
 function dataDir() {
-  return process.env.FORGECHAT_DATA_DIR || '/app/data';
+  return process.env.SYNAPTICCHAT_DATA_DIR || process.env.FORGECHAT_DATA_DIR || '/app/data';
 }
 function filePath() {
   return path.join(dataDir(), 'instance.json');
@@ -81,7 +82,9 @@ function bootstrapSecrets() {
   };
 
   resolve('JWT_SECRET', 'jwtSecret');
-  resolve('FORGECRM_ENCRYPTION_KEY', 'encryptionKey');
+  resolve('SYNAPTICCHAT_ENCRYPTION_KEY', 'encryptionKey');
+  // Mirror to legacy FORGECRM_ENCRYPTION_KEY for backward compatibility
+  process.env.FORGECRM_ENCRYPTION_KEY = process.env.SYNAPTICCHAT_ENCRYPTION_KEY;
 
   if (generatedAny) {
     try {
@@ -96,7 +99,7 @@ function bootstrapSecrets() {
       // the next restart, so fail loudly with an actionable message.
       throw new Error(
         `[instance] cannot persist instance secrets to ${filePath()}: ${err.message}. ` +
-        `Mount a writable volume at ${dataDir()} (or set JWT_SECRET + FORGECRM_ENCRYPTION_KEY).`
+        `Mount a writable volume at ${dataDir()} (or set JWT_SECRET + SYNAPTICCHAT_ENCRYPTION_KEY).`
       );
     }
   }

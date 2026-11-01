@@ -2,7 +2,7 @@
 // Disk retention sweep: deletes media files older than MEDIA_RETENTION_DAYS
 // from /app/media, marks the corresponding chat_history rows as 'expired',
 // and prunes now-empty directories. Run from cron:
-//   docker exec forgecrm-backend node scripts/cleanupMedia.js
+//   docker exec synapticchat-forgecrm-backend-1 node scripts/cleanupMedia.js
 // Override with: --days 90 --dry-run
 
 require('dotenv').config();

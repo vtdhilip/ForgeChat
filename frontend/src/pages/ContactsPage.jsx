@@ -163,7 +163,7 @@ export default function ContactsPage({ user, onNavigate }) {
     }
   };
 
-  // Ctrl+V paste a sheet into the open modal (Forge convention: file inputs support paste)
+  // Ctrl+V paste a sheet into the open modal (file inputs support paste)
   useEffect(() => {
     if (!importModal) return;
     const onPaste = (e) => {

@@ -132,7 +132,7 @@ router.get('/chatbots/:id/export', requirePermission('chatbot-builder'), async (
     if (rows.length === 0) return res.status(404).json({ error: 'Chatbot not found' });
     const c = rows[0];
     res.json({
-      type: 'forgechat.automation',
+      type: 'synapticchat.automation',
       version: 1,
       automation: { name: c.name, description: c.description, trigger_type: c.trigger_type, config: c.config || {} },
     });
@@ -147,8 +147,8 @@ router.get('/chatbots/:id/export', requirePermission('chatbot-builder'), async (
 router.post('/chatbots/import', requirePermission('chatbot-builder'), async (req, res) => {
   try {
     const payload = req.body || {};
-    if (payload.type !== 'forgechat.automation' || !payload.automation || !payload.automation.name) {
-      return res.status(400).json({ error: 'That file is not a ForgeChat automation export.' });
+    if ((payload.type !== 'synapticchat.automation' && payload.type !== 'forgechat.automation') || !payload.automation || !payload.automation.name) {
+      return res.status(400).json({ error: 'That file is not a Synaptic Chat automation export.' });
     }
     const a = payload.automation;
     const { rows } = await pool.query(

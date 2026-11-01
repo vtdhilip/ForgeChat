@@ -108,7 +108,7 @@ const apiLimiter = rateLimit({
   skip: (req) => req.path === '/health',
   keyGenerator: (req) => {
     try {
-      const token = req.cookies?.forgecrm_token;
+      const token = req.cookies?.synapticchat_token || req.cookies?.forgecrm_token;
       if (token) {
         const decoded = require('jsonwebtoken').decode(token);
         if (decoded?.username) return `user:${decoded.username}`;
@@ -124,6 +124,7 @@ app.use(apiLimiter);
 
 // Health check
 app.get('/health', (req, res) => res.json({ ok: true }));
+app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Public routes (Meta webhook — no auth)
 app.use('/api', webhookRouter);
@@ -276,12 +277,12 @@ async function start() {
   setInterval(runTemplateSync, TEMPLATE_SYNC_MS).unref(); // every 10 min (gated by pending count)
 
   const server = app.listen(PORT, () => {
-    console.log(`[ForgeChat] Backend running on port ${PORT}`);
+    console.log(`[Synaptic Chat] Backend running on port ${PORT}`);
   });
 
   // Graceful shutdown so BullMQ marks in-flight jobs as stalled (not lost)
   const shutdown = async (sig) => {
-    console.log(`[ForgeChat] ${sig} received, draining…`);
+    console.log(`[Synaptic Chat] ${sig} received, draining…`);
     server.close(() => {});
     await shutdownMediaQueue();
     await shutdownSendQueue();

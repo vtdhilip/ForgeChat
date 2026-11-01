@@ -1,4 +1,4 @@
-# ForgeChat — standalone deployment. PostgreSQL + Redis + backend + frontend.
+# Synaptic Chat — standalone deployment. PostgreSQL + Redis + backend + frontend.
 #
 # Quick start (no configuration needed):
 #   docker compose up -d
@@ -54,7 +54,8 @@ services:
       PORT: "3011"                     # the frontend (nginx) proxies to forgecrm-backend:3011
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-forgechat}@forgecrm-db:5432/postgres
       REDIS_URL: redis://redis:6379
-      FORGECHAT_DATA_DIR: /app/data    # persisted auto-generated secrets live here
+      SYNAPTICCHAT_DATA_DIR: /app/data # persisted auto-generated secrets live here
+      FORGECHAT_DATA_DIR: /app/data    # backward compatibility fallback
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       SHOPIFY_STORE_DOMAIN: ${SHOPIFY_STORE_DOMAIN:-}

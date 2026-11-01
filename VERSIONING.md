@@ -1,6 +1,6 @@
 # Versioning & Upgrade Policy
 
-ForgeChat follows [Semantic Versioning](https://semver.org/). This page is the
+Synaptic Chat follows [Semantic Versioning](https://semver.org/). This page is the
 contract self-hosters rely on to upgrade safely.
 
 ## What each version bump means
@@ -42,8 +42,8 @@ GHCR via the [Publish Docker Images](./.github/workflows/docker-publish.yml)
 workflow:
 
 ```
-ghcr.io/forgemind-git/forge-chat-backend:<version>
-ghcr.io/forgemind-git/forge-chat-frontend:<version>
+ghcr.io/vtdhilipkumar/synaptic-chat-backend:<version>
+ghcr.io/vtdhilipkumar/synaptic-chat-frontend:<version>
 ```
 
 Pin to a specific version in production and review the CHANGELOG before

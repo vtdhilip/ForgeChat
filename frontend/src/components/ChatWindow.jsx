@@ -250,7 +250,7 @@ export default function ChatWindow({ waNumber, contactNumber, onContactSaved }) 
     setPendingPreviewUrl(null);
   };
 
-  // Ctrl+V paste handler — Forge convention: file inputs must support paste
+  // Ctrl+V paste handler — file inputs must support paste
   useEffect(() => {
     if (!waNumber || !contactNumber) return;
     const onPaste = (e) => {

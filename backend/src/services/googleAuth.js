@@ -162,7 +162,7 @@ async function buildOAuthClient() {
 function signState({ userId, nonce }) {
   return jwt.sign(
     { uid: userId, n: nonce, kind: 'google_oauth_state' },
-    process.env.JWT_SECRET || 'forgecrm-dev-secret-change-me',
+    process.env.JWT_SECRET || 'synapticchat-dev-secret-change-me',
     { expiresIn: STATE_TTL_SECONDS },
   );
 }
@@ -171,7 +171,7 @@ function verifyState(state) {
   try {
     const payload = jwt.verify(
       state,
-      process.env.JWT_SECRET || 'forgecrm-dev-secret-change-me',
+      process.env.JWT_SECRET || 'synapticchat-dev-secret-change-me',
     );
     if (payload.kind !== 'google_oauth_state') return null;
     return payload;

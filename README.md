@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="frontend/public/forgemind-logo.gif" alt="ForgeChat Logo" width="180"/>
+  <img src="frontend/public/synaptic-logo.svg" alt="Synaptic Chat Logo" width="180"/>
 </p>
 
-<h1 align="center">ForgeChat</h1>
+<h1 align="center">Synaptic Chat</h1>
 <p align="center">
   <strong>Your own WhatsApp Business inbox & CRM — running on your own server</strong>
 </p>
 
 <p align="center">
-  <a href="#-what-is-forgechat">What is it?</a> •
+  <a href="#-what-is-synaptic-chat">What is it?</a> •
   <a href="#-what-you-can-do">Features</a> •
   <a href="#-deploy-it-yourself">Deploy</a> •
   <a href="#-connect-your-whatsapp">Connect WhatsApp</a> •
@@ -18,29 +18,16 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.1.0-blue.svg" alt="Version"/>
-  <img src="https://img.shields.io/badge/license-Sustainable%20Use-green.svg" alt="License"/>
-  <img src="https://img.shields.io/badge/fair--code-%E2%9C%93-brightgreen.svg" alt="fair-code"/>
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"/>
   <img src="https://img.shields.io/badge/setup-no%20coding%20needed-success.svg" alt="No coding needed"/>
   <img src="https://img.shields.io/badge/docker-ready-2496ED.svg" alt="Docker"/>
 </p>
 
-<p align="center">
-  <a href="https://youtu.be/tvYR0cGOj_4"><img src="docs/forgechat-overview.gif" alt="ForgeChat video tour" width="720" /></a>
-</p>
-
-<p align="center">
-  <sub>▶ Video tour (above, no audio) — <a href="https://youtu.be/tvYR0cGOj_4">watch the full version on YouTube</a> with narration.</sub>
-</p>
-
-<p align="center">
-  <sub>Need a server to run it on? <a href="https://www.hostinger.com/in?REFERRALCODE=RZ8CONTACT7T"><strong>Get a Hostinger VPS at 20% off</strong></a> (affiliate link).</sub>
-</p>
-
 ---
 
-## 🤔 What is ForgeChat?
+## 🤔 What is Synaptic Chat?
 
-**ForgeChat** is a free WhatsApp Business inbox and CRM that **you host yourself**. Instead of paying a monthly fee to a SaaS company that keeps all your customer chats on *their* servers, you run ForgeChat on your own server — so **you own your data and your customer conversations**.
+**Synaptic Chat** is a WhatsApp Business inbox and CRM that **you host yourself**. Instead of paying a monthly fee to a SaaS company that keeps all your customer chats on *their* servers, you run Synaptic Chat on your own server — so **you own your data and your customer conversations**.
 
 It connects to the **WhatsApp Cloud API** (part of the **WhatsApp Business Platform**, hosted by Meta) — the documented, ToS-compliant way to send and receive WhatsApp business messages — and gives your whole team a clean, chat-style screen to:
 
@@ -51,7 +38,7 @@ It connects to the **WhatsApp Cloud API** (part of the **WhatsApp Business Platf
 - 🧠 **Let an AI agent reply for you** — connect an AI model and it answers customers automatically (voice notes included)
 - 📋 **Track deals** on a sales pipeline board
 
-> **You don't need to be a programmer to set this up.** If you can install Docker and copy-paste two commands, you can run ForgeChat. It takes about **5 minutes**.
+> **You don't need to be a programmer to set this up.** If you can install Docker and copy-paste two commands, you can run Synaptic Chat. It takes about **5 minutes**.
 
 ---
 
@@ -76,7 +63,7 @@ It connects to the **WhatsApp Cloud API** (part of the **WhatsApp Business Platf
 - Send and receive **text, photos, videos, voice notes, and documents**
 - **Record voice notes** right inside the chat box
 - React with emojis, reply to specific messages, and star important ones
-- ForgeChat reminds you about WhatsApp's **24-hour reply rule** and suggests a template when needed
+- Synaptic Chat reminds you about WhatsApp's **24-hour reply rule** and suggests a template when needed
 
 ### 🗂️ Manage customers
 - A full **contact list** with names and phone numbers
@@ -130,15 +117,15 @@ The only thing you need installed is **Docker** — everything else (secure keys
 2. **Open Docker Desktop and wait until it says "Engine running"** (bottom-left). `docker compose` can't start anything until the engine is up.
 3. In **Terminal**, run:
    ```bash
-   git clone https://github.com/Forgemind-git/ForgeChat.git
-   cd ForgeChat
+   git clone https://github.com/vtdhilipkumar/SynapticChat.git
+   cd SynapticChat
    docker compose up -d
    # then print the exact address to open:
-   echo "ForgeChat is running at http://localhost:$(docker compose port forgecrm-frontend 80 | cut -d: -f2)"
+   echo "Synaptic Chat is running at http://localhost:$(docker compose port forgecrm-frontend 80 | cut -d: -f2)"
    ```
 4. Open the **http://localhost:…** address the last command printed (default **http://localhost:8080**), and create your admin account right in the browser.
 
-No config files, no secrets, no database commands — ForgeChat creates its own secure keys and sets up its database automatically. The first launch builds the app, so give it a minute. Want a different port? `HTTP_PORT=9000 docker compose up -d`.
+No config files, no secrets, no database commands — Synaptic Chat creates its own secure keys and sets up its database automatically. The first launch builds the app, so give it a minute. Want a different port? `HTTP_PORT=9000 docker compose up -d`.
 
 > **Want real WhatsApp messages on this local install?** You'll start one free Cloudflare Tunnel command so Meta can reach your webhook — see **[Connect your WhatsApp](#-connect-your-whatsapp)** below. Keep using the app at `http://localhost:8080`.
 
@@ -148,15 +135,15 @@ No config files, no secrets, no database commands — ForgeChat creates its own 
 2. **Open Docker Desktop and wait until it says "Engine running"** (bottom-left) before continuing — `docker compose` can't start anything until the engine is up.
 3. In **PowerShell**, run:
    ```powershell
-   git clone https://github.com/Forgemind-git/ForgeChat.git
-   cd ForgeChat
+   git clone https://github.com/vtdhilipkumar/SynapticChat.git
+   cd SynapticChat
    docker compose up -d
    # then print the exact address to open:
-   "ForgeChat is running at http://localhost:$((docker compose port forgecrm-frontend 80).Split(':')[-1].Trim())"
+   "Synaptic Chat is running at http://localhost:$((docker compose port forgecrm-frontend 80).Split(':')[-1].Trim())"
    ```
 4. Open the **http://localhost:…** address the last command printed (default **http://localhost:8080**), and create your admin account right in the browser.
 
-No config files, no secrets, no database commands — ForgeChat sets everything up on first start. The first launch builds the app, so give it a minute. Want a different port? `$env:HTTP_PORT=9000; docker compose up -d`.
+No config files, no secrets, no database commands — Synaptic Chat sets everything up on first start. The first launch builds the app, so give it a minute. Want a different port? `$env:HTTP_PORT=9000; docker compose up -d`.
 
 > **Want real WhatsApp messages on this local install?** You'll start one free Cloudflare Tunnel command so Meta can reach your webhook — see **[Connect your WhatsApp](#-connect-your-whatsapp)** below. Keep using the app at `http://localhost:8080`.
 
@@ -164,12 +151,12 @@ No config files, no secrets, no database commands — ForgeChat sets everything 
 
 This is the **production** path. To actually **send and receive WhatsApp messages**, the app needs a public web address (`https://…`) that Meta can reach — a plain `localhost` install can't receive messages.
 
-1. Rent a small server (**2 GB+ RAM**) with ports **80** and **443** free — e.g. a **[Hostinger VPS at 20% off](https://www.hostinger.com/in?REFERRALCODE=RZ8CONTACT7T)** (affiliate link).
+1. Rent a small server (**2 GB+ RAM**) with ports **80** and **443** free.
 2. Register a domain you own and point its DNS **A record** at the server's IP address.
 3. Install Docker (`curl -fsSL https://get.docker.com | sh`), then clone and run the installer:
    ```bash
-   git clone https://github.com/Forgemind-git/ForgeChat.git
-   cd ForgeChat
+   git clone https://github.com/vtdhilipkumar/SynapticChat.git
+   cd SynapticChat
    ./install.sh
    ```
    It asks for your domain, checks that DNS and the ports are ready, then starts everything. That's it.
@@ -184,7 +171,7 @@ DOMAIN=chat.yourbusiness.com docker compose -f docker-compose.yml -f docker-comp
 The installer is just a friendly wrapper around this command plus DNS/port pre-checks.
 </details>
 
-> ⚠️ **Keep the `secrets` volume.** ForgeChat stores its encryption key there. If you delete it, saved WhatsApp tokens can no longer be decrypted and you'll have to reconnect WhatsApp.
+> ⚠️ **Keep the `secrets` volume.** Synaptic Chat stores its encryption key there. If you delete it, saved WhatsApp tokens can no longer be decrypted and you'll have to reconnect WhatsApp.
 
 ### Optional settings
 
@@ -201,7 +188,7 @@ To send and receive real messages, link your **WhatsApp Business Account**. You 
 Meta delivers incoming messages to a **webhook**, so it needs a public `https://` URL.
 
 - 🖥️ **Server install:** you already have one — your domain (e.g. `https://chat.yourbusiness.com`). **Skip to Step 2.**
-- 🍎🪟 **Local install (Mac/Windows):** `localhost` isn't reachable from the internet, so start the **built-in Cloudflare Tunnel** — no account, nothing to install, it runs as a container. From the `ForgeChat` folder:
+- 🍎🪟 **Local install (Mac/Windows):** `localhost` isn't reachable from the internet, so start the **built-in Cloudflare Tunnel** — no account, nothing to install, it runs as a container. From the `SynapticChat` folder:
   ```bash
   docker compose --profile tunnel up -d
   docker compose logs -f tunnel
@@ -211,21 +198,21 @@ Meta delivers incoming messages to a **webhook**, so it needs a public `https://
   > ⚠️ **Log in and use the app at `http://localhost:8080`** — *not* the `…trycloudflare.com` URL. The tunnel exists only so Meta can reach your webhook; opening the app through it fails with a CORS error on login.
   > ℹ️ The tunnel URL changes whenever you restart it; if it changes, update the **Callback URL** in Meta (Step 3). Stop it later with `docker compose --profile tunnel down`. *(Prefer ngrok? It works too, but needs a free account + authtoken — the built-in tunnel is the quickest start.)*
 
-### Step 2 — Add the account in ForgeChat
+### Step 2 — Add the account in Synaptic Chat
 
-1. **Log in** to ForgeChat (at `http://localhost:8080`, or your domain) → **Settings** → **WhatsApp Accounts** → **Add**.
-2. From the [Meta Business dashboard](https://business.facebook.com/) (your app → **WhatsApp → API Setup**), copy these into the form: **Phone Number ID**, **WABA ID**, **Meta App ID**, and a **Meta access token**. Also make up a **verify token** — any random text (you'll paste the *same* value into Meta in Step 3). ForgeChat encrypts the access token and **auto-detects your business phone number and name from Meta** using that token — so make sure it's valid (a *test number*'s token from the API Setup page expires after 24 hours).
+1. **Log in** to Synaptic Chat (at `http://localhost:8080`, or your domain) → **Settings** → **WhatsApp Accounts** → **Add**.
+2. From the [Meta Business dashboard](https://business.facebook.com/) (your app → **WhatsApp → API Setup**), copy these into the form: **Phone Number ID**, **WABA ID**, **Meta App ID**, and a **Meta access token**. Also make up a **verify token** — any random text (you'll paste the *same* value into Meta in Step 3). Synaptic Chat encrypts the access token and **auto-detects your business phone number and name from Meta** using that token — so make sure it's valid (a *test number*'s token from the API Setup page expires after 24 hours).
 
-### Step 3 — Point Meta's webhook at ForgeChat
+### Step 3 — Point Meta's webhook at Synaptic Chat
 
 In the **Meta dashboard** → **WhatsApp → Configuration → Webhook → Edit**:
 
 - **Callback URL:** your **public URL** from Step 1, followed by `/api/webhook/whatsapp`
   - Local example: `https://two-cats-run.trycloudflare.com/api/webhook/whatsapp`
   - Server example: `https://chat.yourbusiness.com/api/webhook/whatsapp`
-  - ⚠️ On a local install, **ignore the `http://localhost…` URL the ForgeChat form shows** — Meta can't reach localhost. Use your **tunnel** address here instead.
-- **Verify token:** the exact verify token you entered in ForgeChat (Step 2).
-- Click **Verify and save** — Meta calls your webhook to confirm it (ForgeChat and the tunnel must be running).
+  - ⚠️ On a local install, **ignore the `http://localhost…` URL the Synaptic Chat form shows** — Meta can't reach localhost. Use your **tunnel** address here instead.
+- **Verify token:** the exact verify token you entered in Synaptic Chat (Step 2).
+- Click **Verify and save** — Meta calls your webhook to confirm it (Synaptic Chat and the tunnel must be running).
 - **Subscribe to these webhook fields** (under *WhatsApp Business Account*):
   - `messages` — incoming messages + delivery/read statuses *(required)*
   - `message_template_status_update` — template approved / rejected / paused by Meta
@@ -233,9 +220,9 @@ In the **Meta dashboard** → **WhatsApp → Configuration → Webhook → Edit*
   - `message_template_components_update` — edits to an approved template's content
   - `template_category_update` — Meta re-categorises a template
   - `template_correct_category_detection` — Meta's suggested correct category
-  - `smb_message_echoes` — copies of messages your team sends from the WhatsApp app, so they also appear in ForgeChat (coexistence)
+  - `smb_message_echoes` — copies of messages your team sends from the WhatsApp app, so they also appear in Synaptic Chat (coexistence)
 
-**Verify it works:** send a real WhatsApp message from your phone to the business number — it should appear in **Chats** within seconds, and your reply from ForgeChat should arrive back on your phone.
+**Verify it works:** send a real WhatsApp message from your phone to the business number — it should appear in **Chats** within seconds, and your reply from Synaptic Chat should arrive back on your phone.
 
 > ℹ️ You can explore the whole app (inbox, contacts, automations, templates) **before** connecting WhatsApp — you just won't send/receive real messages until this step is done.
 
@@ -258,12 +245,12 @@ In the **Meta dashboard** → **WhatsApp → Configuration → Webhook → Edit*
 
 ## 🔌 Build agents from Claude (MCP server)
 
-ForgeChat ships an **MCP server** so you can **build and manage your WhatsApp AI agents by chatting with Claude** (Claude Desktop, or any MCP client) — it asks what you need, looks up your real WhatsApp numbers, AI models, Google Sheets, media and templates, and creates a fully-configured agent for you. No dashboard required.
+Synaptic Chat ships an **MCP server** so you can **build and manage your WhatsApp AI agents by chatting with Claude** (Claude Desktop, or any MCP client) — it asks what you need, looks up your real WhatsApp numbers, AI models, Google Sheets, media and templates, and creates a fully-configured agent for you. No dashboard required.
 
 ### Step 1 — Turn it on and get a key
-In ForgeChat, open **Settings → MCP Tools**:
+In Synaptic Chat, open **Settings → MCP Tools**:
 1. Flip the **master switch** on, and enable the **capabilities** you want (discovery, create/update agents, manage tools, delete).
-2. Click **Generate key** and copy the `fck_live_…` value — it's shown **once**.
+2. Click **Generate key** and copy the `sck_live_…` value — it's shown **once**.
 
 ### Step 2 — Connect Claude (pick one)
 
@@ -283,12 +270,12 @@ Use the server in [`mcp-server/`](mcp-server/) (`npm install` once), then add th
 ```json
 {
   "mcpServers": {
-    "forgechat-agents": {
+    "synapticchat-agents": {
       "command": "node",
-      "args": ["/path/to/ForgeChat/mcp-server/src/index.js"],
+      "args": ["/path/to/SynapticChat/mcp-server/src/index.js"],
       "env": {
-        "FORGECHAT_API_URL": "https://your-domain/api/mcp/v1",
-        "FORGECHAT_API_KEY": "fck_live_PASTE_YOUR_KEY"
+        "SYNAPTICCHAT_API_URL": "https://your-domain/api/mcp/v1",
+        "SYNAPTICCHAT_API_KEY": "sck_live_PASTE_YOUR_KEY"
       }
     }
   }
@@ -296,15 +283,15 @@ Use the server in [`mcp-server/`](mcp-server/) (`npm install` once), then add th
 ```
 
 ### Step 3 — Use it
-Fully quit and reopen Claude, then say **“create a ForgeChat agent”** — it walks you through the setup questions and builds the agent. Each capability is gated by the toggles in **Settings → MCP Tools** (a disabled one returns a clear error), and the key can be revoked any time from the same page.
+Fully quit and reopen Claude, then say **“create a Synaptic Chat agent”** — it walks you through the setup questions and builds the agent. Each capability is gated by the toggles in **Settings → MCP Tools** (a disabled one returns a clear error), and the key can be revoked any time from the same page.
 
-> Replace `your-domain` with wherever ForgeChat is hosted. The bearer key works over the internet; your ForgeChat login cookie is never involved. See [`mcp-server/README.md`](mcp-server/README.md) for the full tool list and debugging tips.
+> Replace `your-domain` with wherever Synaptic Chat is hosted. The bearer key works over the internet; your Synaptic Chat login cookie is never involved. See [`mcp-server/README.md`](mcp-server/README.md) for the full tool list and debugging tips.
 
 ---
 
 ## 🔄 Keeping it running
 
-**Update to the latest version** (run on your server, inside the `ForgeChat` folder):
+**Update to the latest version** (run on your server, inside the `SynapticChat` folder):
 
 ```bash
 git pull
@@ -319,7 +306,7 @@ New database changes are applied automatically on start — nothing else to run.
 mkdir -p ~/backups
 crontab -e
 # add this line to back up every day at 3 AM and keep 7 days:
-0 3 * * * cd ~/ForgeChat && docker compose exec -T forgecrm-db pg_dump -U postgres postgres | gzip > ~/backups/forgechat-$(date +\%Y\%m\%d).sql.gz && find ~/backups -name '*.sql.gz' -mtime +7 -delete
+0 3 * * * cd ~/SynapticChat && docker compose exec -T forgecrm-db pg_dump -U postgres postgres | gzip > ~/backups/synapticchat-$(date +\%Y\%m\%d).sql.gz && find ~/backups -name '*.sql.gz' -mtime +7 -delete
 ```
 
 > Also keep the `secrets` volume safe — it holds the key that decrypts your stored WhatsApp tokens.
@@ -333,19 +320,17 @@ crontab -e
 | **`This site can't be reached` / `exec format error` (Apple Silicon Mac)** | If `localhost:8080` won't load and `docker compose logs forgecrm-frontend` shows `exec /docker-entrypoint.sh: exec format error`, Docker Desktop's **containerd image store** built the web image for the wrong CPU. One-time fix: open **Docker Desktop → Settings → General**, **uncheck** "Use containerd for pulling and storing images", click **Apply & Restart**, then rebuild: `docker compose build --no-cache && docker compose up -d`. |
 | **`The system cannot find the file specified` / `pipe/dockerDesktopLinuxEngine` (Windows or Mac)** | Docker Desktop isn't running. Open it and wait for **"Engine running"**, then re-run `docker compose up -d`. Confirm the engine is reachable with `docker version` — the **Server:** section must appear (not just **Client:**). If Docker Desktop won't start on Windows, the **WSL 2** backend is likely missing: run `wsl --install` in an **Administrator** PowerShell, restart, and try again. |
 | **Login fails with `500` when opening the `…trycloudflare.com` URL** | You're browsing the app through the tunnel — use **`http://localhost:8080`** instead. The tunnel is only for Meta's webhook; logging in through it is blocked by CORS. |
-| **WhatsApp connected but no chats appear** | ForgeChat auto-detects your business number from Meta using the access token — if that token was invalid/expired when you connected, the number stays blank and chats for it are hidden (they're still saved). Fix: **Settings → WhatsApp Accounts → edit → paste a valid access token → Save** to re-fetch it. Received messages then appear immediately. |
+| **WhatsApp connected but no chats appear** | Synaptic Chat auto-detects your business number from Meta using the access token — if that token was invalid/expired when you connected, the number stays blank and chats for it are hidden (they're still saved). Fix: **Settings → WhatsApp Accounts → edit → paste a valid access token → Save** to re-fetch it. Received messages then appear immediately. |
 | **No tunnel URL in the logs** | The URL prints a few seconds *after* the tunnel starts, so watch it in **follow mode**: `docker compose logs -f tunnel`, wait for the `https://…trycloudflare.com` line, then press Ctrl+C. (Plain `docker compose logs tunnel` can run before it's printed — that's why it looks empty the first time.) |
 | **The page won't load (production)** | Your domain may not point to the server yet. Double-check the DNS "A record", wait a few minutes, then refresh. |
 | **"502" error or blank screen** | The app may still be starting. Wait a minute, then check the logs: `docker compose logs forgecrm-backend`. |
 | **Can't log in** | Use the admin email/password you created in the setup screen. Forgot it? An admin can reset it under **Settings → Users**. |
 | **Build got "Killed" / "out of memory"** | The build ran out of RAM. Use **2 GB+**, or add swap and rebuild: `fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`. |
-| **Messages aren't arriving** | Re-check the **webhook** in the Meta dashboard: subscribe to `messages`, make sure the **Callback URL ends with `/api/webhook/whatsapp`**, and the **Verify token matches exactly** what you entered in ForgeChat (no extra spaces). |
+| **Messages aren't arriving** | Re-check the **webhook** in the Meta dashboard: subscribe to `messages`, make sure the **Callback URL ends with `/api/webhook/whatsapp`**, and the **Verify token matches exactly** what you entered in Synaptic Chat (no extra spaces). |
 | **Changed an optional `.env` setting** | Re-create the containers so they pick up the new values: `docker compose up -d`. |
 | **HTTPS certificate won't issue (production)** | DNS isn't pointing at the server yet. Check with `dig +short chat.yourbusiness.com` (should return your server IP), then `docker compose -f docker-compose.yml -f docker-compose.prod.yml restart caddy`. |
 | **Reconnected WhatsApp after a reset and tokens are gone** | The `secrets` volume (encryption key) was likely removed. Re-enter the WhatsApp access token in **Settings → WhatsApp Accounts**. |
 | **Is my data safe?** | Yes — everything lives on *your* server. WhatsApp tokens are encrypted, and access is protected by login. Just keep your backups (above). |
-
-Still stuck? Open an issue on [GitHub](https://github.com/Forgemind-git/ForgeChat/issues) and we'll help.
 
 ---
 
@@ -357,34 +342,23 @@ Still stuck? Open an issue on [GitHub](https://github.com/Forgemind-git/ForgeCha
 - Incoming webhooks are verified with Meta's signature so fake messages are rejected.
 - The API is protected with rate limiting, security headers, and parameterized database queries.
 
-Found a security issue? Please report it privately — see **[SECURITY.md](./SECURITY.md)**. Don't open a public issue.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for setup and conventions, and the **[CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)**. Release history is in **[CHANGELOG.md](./CHANGELOG.md)**.
-
 ---
 
 ## 📄 License
 
-ForgeChat is [**fair-code**](https://faircode.io) distributed under the **[Sustainable Use License](./LICENSE.md)**.
+Synaptic Chat is distributed under the **[MIT License](./LICENSE.md)**.
 
-- ✅ Use it for your own business, personal, or non-commercial purposes.
-- ✅ Share it free of charge for non-commercial purposes.
-- ❌ No reselling or paid hosting as a service without permission.
+- ✅ Use it for your own business, personal, or commercial purposes.
+- ✅ Customise and extend the application for your workflow.
 
-Copyright © 2026 **Forgemind Techhub LLP**. **Forgemind AI** is a trademark of Forgemind Techhub LLP — see **[TRADEMARK.md](./TRADEMARK.md)**.
+Copyright © 2026 **Synaptic Chat**.
 
-> **WhatsApp** is a trademark of WhatsApp LLC. **Meta** is a trademark of Meta Platforms, Inc. ForgeChat is an independent application that connects to the WhatsApp Cloud API (hosted by Meta), and is **not** affiliated with, endorsed by, sponsored by, or otherwise officially connected to Meta Platforms, Inc. or WhatsApp LLC.
+> **WhatsApp** is a trademark of WhatsApp LLC. **Meta** is a trademark of Meta Platforms, Inc. Synaptic Chat is an independent application that connects to the WhatsApp Cloud API (hosted by Meta), and is **not** affiliated with, endorsed by, sponsored by, or otherwise officially connected to Meta Platforms, Inc. or WhatsApp LLC.
 
 ---
 
 <div align="center">
 
-**ForgeChat** — own your inbox.
-
-<sub>Made with ❤️ by <a href="https://github.com/Forgemind-git">Forgemind</a></sub>
+**Synaptic Chat** — own your inbox.
 
 </div>

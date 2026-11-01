@@ -1,6 +1,6 @@
-# Contributing to ForgeChat
+# Contributing to Synaptic Chat
 
-Thanks for your interest in improving ForgeChat — a full-stack WhatsApp CRM
+Thanks for your interest in improving Synaptic Chat — a full-stack WhatsApp CRM
 built on the Meta WhatsApp Cloud API. This guide explains how to set up a local
 environment, the conventions we follow, and how to get a change merged.
 
@@ -28,7 +28,7 @@ By participating in this project, you agree to abide by our
 
 ## Ways to Contribute
 
-- **Report a bug** — open a [GitHub issue](https://github.com/Forgemind-git/ForgeChat/issues)
+- **Report a bug** — open a [GitHub issue](https://github.com/vtdhilipkumar/SynapticChat/issues)
   with steps to reproduce, expected vs. actual behaviour, your environment
   (OS, Node version, browser), and logs or screenshots where relevant.
 - **Propose a feature** — open an issue describing the problem you want solved
@@ -47,7 +47,7 @@ By participating in this project, you agree to abide by our
 ## Repository Structure
 
 ```
-ForgeChat/
+SynapticChat/
 ├── backend/              # Node.js 20 + Express 4 API (pg, BullMQ)
 │   ├── src/
 │   │   ├── index.js            # bootstrap, middleware, route mounting
@@ -91,22 +91,22 @@ External contributors should **fork** the repository, then clone their fork and
 add this repo as the `upstream` remote so you can keep your branch in sync:
 
 ```bash
-git clone https://github.com/<your-username>/ForgeChat.git
-cd ForgeChat
-git remote add upstream https://github.com/Forgemind-git/ForgeChat.git
+git clone https://github.com/<your-username>/SynapticChat.git
+cd SynapticChat
+git remote add upstream https://github.com/vtdhilipkumar/SynapticChat.git
 ```
 
 ### 2. Start PostgreSQL and Redis
 
-ForgeChat needs PostgreSQL 15 and Redis. The quickest way to get both with
+Synaptic Chat needs PostgreSQL 15 and Redis. The quickest way to get both with
 published ports for a natively-run backend:
 
 ```bash
-docker run -d --name forgechat-dev-db \
+docker run -d --name synapticchat-dev-db \
   -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres \
   -p 5432:5432 postgres:15
 
-docker run -d --name forgechat-dev-redis -p 6379:6379 redis:7-alpine
+docker run -d --name synapticchat-dev-redis -p 6379:6379 redis:7-alpine
 ```
 
 > The repository's `docker-compose.sample.yml` is the **production** stack and
@@ -259,9 +259,9 @@ PRs whose commits are not signed off cannot be merged.
 
 ## License of Contributions
 
-ForgeChat is distributed under the [Sustainable Use License](./LICENSE.md). By
+Synaptic Chat is distributed under the [MIT License](./LICENSE.md). By
 submitting a contribution, you agree that it is licensed under the same
-Sustainable Use License (**inbound = outbound**). No separate copyright
+license (**inbound = outbound**). No separate copyright
 assignment or CLA is required.
 
 ---
@@ -275,8 +275,7 @@ assignment or CLA is required.
 2. **Branch** off `main` with a descriptive name: `feat/<topic>`, `fix/<topic>`,
    or `docs/<topic>`.
 3. **Commit** in small, logical, signed-off steps using Conventional Commits.
-4. **Push** to your fork and **open a pull request** against
-   `Forgemind-git/ForgeChat:main`. Fill in the description: what changed, why,
+4. **Push** to your fork and **open a pull request**. Fill in the description: what changed, why,
    how you tested it, and any related issue (`Closes #123`).
 5. **Respond to review.** Please address requested changes or reply within
    **14 days** — stale PRs may be closed, but you're welcome to reopen them once
@@ -304,9 +303,7 @@ Before requesting review, confirm:
 
 ## Getting Help
 
-- Open a [GitHub issue](https://github.com/Forgemind-git/ForgeChat/issues) for
-  questions, bugs, or feature discussion.
-- New to the project? Look for issues labelled **good first issue**, and feel
-  free to add yourself to [`AUTHORS.md`](./AUTHORS.md) in your first PR.
+- Open an issue for questions, bugs, or feature discussion.
+- Feel free to add yourself to [`AUTHORS.md`](./AUTHORS.md) in your first PR.
 
 Thank you for contributing! 🙌

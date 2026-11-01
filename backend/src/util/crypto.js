@@ -1,7 +1,7 @@
 // AES-256-GCM symmetric encryption for sensitive secrets stored in the DB
 // (currently: Meta WhatsApp access tokens). Format: base64(iv || tag || ct)
 // where iv=12B, tag=16B, ct=variable. Derives a 32-byte key by SHA-256 of
-// FORGECRM_ENCRYPTION_KEY.
+// SYNAPTICCHAT_ENCRYPTION_KEY.
 //
 // The key is guaranteed present + strong by util/instanceSecrets.bootstrapSecrets(),
 // which runs first in index.js (resolves from env, else a persisted file, else
@@ -10,7 +10,7 @@
 
 const crypto = require('crypto');
 
-const RAW = process.env.FORGECRM_ENCRYPTION_KEY || process.env.JWT_SECRET || '';
+const RAW = process.env.SYNAPTICCHAT_ENCRYPTION_KEY || process.env.FORGECRM_ENCRYPTION_KEY || process.env.JWT_SECRET || '';
 if (!RAW) {
   console.warn('[crypto] WARNING: no encryption key in env — encryption will use an empty key. Run via index.js so instanceSecrets bootstraps one.');
 }

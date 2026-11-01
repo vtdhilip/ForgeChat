@@ -355,7 +355,7 @@ async function exportAgent(id) {
   const full = await getAgent(id);
   if (!full) throw new ApiError(404, 'Not found');
   return {
-    type: 'forgechat.agent',
+    type: 'synapticchat.agent',
     version: 1,
     agent: {
       name: full.name,
@@ -409,8 +409,8 @@ async function resolveModelId({ aiModelId, aiProvider, aiModelLabel }) {
 // auto-activates), relinks model/number when they resolve here, and re-adds
 // every tool. Returns { agent, warnings }.
 async function importAgent(payload = {}) {
-  if (!payload || payload.type !== 'forgechat.agent' || !payload.agent) {
-    throw new ApiError(400, 'That file is not a ForgeChat agent export.');
+  if (!payload || (payload.type !== 'synapticchat.agent' && payload.type !== 'forgechat.agent') || !payload.agent) {
+    throw new ApiError(400, 'That file is not a Synaptic Chat agent export.');
   }
   const a = payload.agent;
   if (!a.name || !a.systemPrompt) {

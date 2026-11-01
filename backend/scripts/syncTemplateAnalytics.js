@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Refresh template analytics for every template that has a meta_template_id.
 // Run from host cron daily:
-//   0 2 * * * docker exec forgecrm-backend node scripts/syncTemplateAnalytics.js >> /var/log/forgecrm-analytics-sync.log 2>&1
+//   0 2 * * * docker exec synapticchat-forgecrm-backend-1 node scripts/syncTemplateAnalytics.js >> /var/log/synapticchat-analytics-sync.log 2>&1
 
 require('dotenv').config();
 const pool = require('../src/db');

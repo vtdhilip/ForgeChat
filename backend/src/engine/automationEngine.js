@@ -36,7 +36,7 @@ function _stringifyForInterpolation(v) {
   try { return JSON.stringify(v); } catch { return String(v); }
 }
 
-// Normalize a ForgeCRM field name into a {{variable}} token key.
+// Normalize a Synaptic Chat field name into a {{variable}} token key.
 // MUST stay identical to fieldVarKey() in the frontend AutomationBuilderView.jsx
 // so the token the picker inserts is the token we resolve here.
 // "Date of Birth" -> "date_of_birth", "city" -> "city", "lead_score" -> "lead_score".

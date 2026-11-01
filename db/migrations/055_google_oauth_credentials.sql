@@ -1,7 +1,7 @@
 -- 055: Google OAuth *app* credentials (Client ID / Secret / Redirect URI).
 --
 -- This is the application-level OAuth client identity — what identifies this
--- ForgeChat install to Google — configured once by an admin in the UI under
+-- Synaptic Chat install to Google — configured once by an admin in the UI under
 -- Settings -> Integrations -> Google. It is distinct from
 -- coexistence.oauth_credentials (migration 050), which holds the per-USER
 -- connection tokens minted after each user approves consent.

@@ -1,6 +1,6 @@
 // CRM write-back tools for the AI agent.
 //
-// These let an agent act on its OWN conversation's contact inside ForgeChat's
+// These let an agent act on its OWN conversation's contact inside Synaptic Chat's
 // native CRM (name, tags, custom fields) — not just an external sheet. They're
 // only built when the agent has `crm_tools_enabled` AND there's a real live
 // contact (skipped in the test preview). Each executor is scoped to a single
@@ -35,7 +35,7 @@ function buildCrmTools({ waNumber, contactNumber }) {
 
   tools.push({
     name: 'set_contact_name',
-    description: "Save the customer's name onto their ForgeChat CRM contact record. Call this once you learn their name so it shows on the Contacts page and chat.",
+    description: "Save the customer's name onto their Synaptic Chat CRM contact record. Call this once you learn their name so it shows on the Contacts page and chat.",
     input_schema: { type: 'object', properties: { name: { type: 'string', description: 'The customer\'s name.' } }, required: ['name'] },
   });
   executors['set_contact_name'] = async ({ name }) => {

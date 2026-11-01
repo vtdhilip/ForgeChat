@@ -3,7 +3,7 @@
 # Fails if a newly added *production* dependency carries a license that isn't on
 # the permissive allow-list, so a contributor can't accidentally introduce a
 # copyleft (GPL/AGPL) or non-commercial package that would conflict with
-# ForgeChat's redistribution under the Sustainable Use License (see LICENSE.md).
+# Synaptic Chat's redistribution under the MIT License (see LICENSE.md).
 # This is the automated, permanent version of a manual dependency licence review.
 #
 # Node-only stack: backend (Express) and frontend (React/Vite) are scanned

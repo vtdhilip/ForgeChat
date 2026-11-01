@@ -30,7 +30,7 @@ const mediaGroupSchema = z.object({
   templateId: z.number().nullable().optional().describe('Approved template id to fire. Always confirm the template content with the user via get_template before using this.'),
 }).passthrough();
 
-const GUIDE = `You are creating a ForgeChat WhatsApp AI agent. Gather and CONFIRM the full configuration with the user before calling create_agent. Offer real options fetched from their account — never guess ids, spreadsheets, tabs, models, or numbers.
+const GUIDE = `You are creating a Synaptic Chat WhatsApp AI agent. Gather and CONFIRM the full configuration with the user before calling create_agent. Offer real options fetched from their account — never guess ids, spreadsheets, tabs, models, or numbers.
 
 Walk this flow:
 1. Ask what the agent should do (its purpose / goal).
@@ -60,7 +60,7 @@ Notes: an ACTIVE agent needs both aiModelId and llmModel (otherwise save status:
 
 // Build a fresh server scoped to one request's capabilities.
 function buildServer(capabilities) {
-  const server = new McpServer({ name: 'forgechat-agents', version: '1.0.0' });
+  const server = new McpServer({ name: 'synapticchat-agents', version: '1.0.0' });
 
   /* discovery */
   server.registerTool('list_wa_accounts', {
@@ -148,7 +148,7 @@ function buildServer(capabilities) {
   server.registerTool('create_agent', {
     title: 'Create agent',
     description:
-      'Create a new ForgeChat AI agent. Gather + CONFIRM all settings with the user first. For an ACTIVE agent pass aiModelId + llmModel; otherwise status:"draft". Only one active agent per WhatsApp number. After creating, use add_google_sheets_tool to attach a Sheets tool if wanted.',
+      'Create a new Synaptic Chat AI agent. Gather + CONFIRM all settings with the user first. For an ACTIVE agent pass aiModelId + llmModel; otherwise status:"draft". Only one active agent per WhatsApp number. After creating, use add_google_sheets_tool to attach a Sheets tool if wanted.',
     inputSchema: {
       name: z.string(),
       systemPrompt: z.string(),
@@ -278,9 +278,9 @@ function buildServer(capabilities) {
   }, gated(capabilities, 'delete', ({ id }) => agentService.deleteAgent(id)));
 
   /* prompt */
-  server.registerPrompt('create-forgechat-agent', {
-    title: 'Create a ForgeChat agent',
-    description: 'Guided flow to create and configure a ForgeChat WhatsApp AI agent.',
+  server.registerPrompt('create-synapticchat-agent', {
+    title: 'Create a Synaptic Chat agent',
+    description: 'Guided flow to create and configure a Synaptic Chat WhatsApp AI agent.',
     argsSchema: {},
   }, () => ({ messages: [{ role: 'user', content: { type: 'text', text: GUIDE } }] }));
 

@@ -1,4 +1,4 @@
-# Standalone single-droplet deployment for ForgeChat — SAMPLE / TEMPLATE.
+# Standalone single-droplet deployment for Synaptic Chat — SAMPLE / TEMPLATE.
 # Plain PostgreSQL + Redis + backend + frontend(nginx) + Caddy (auto-HTTPS).
 #
 # This is a committed template. To deploy:

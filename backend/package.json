@@ -1,8 +1,8 @@
 {
-  "name": "forgecrm-backend",
+  "name": "synapticchat-backend",
   "version": "1.2.1",
-  "author": "sthirumalairajan2212",
-  "description": "ForgeChat backend API for WhatsApp chat viewer",
+  "author": "Synaptic Chat",
+  "description": "Synaptic Chat backend API for WhatsApp Business Platform",
   "private": true,
   "license": "LicenseRef-Sustainable-Use-License",
   "main": "src/index.js",

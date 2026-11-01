@@ -11,7 +11,7 @@ const { markSent, markFailed } = require('../services/messageSender');
 const { markAccountHealth, classifyMetaError } = require('../services/accountHealth');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
-const QUEUE_NAME = 'forgecrm-send';
+const QUEUE_NAME = 'synapticchat-send';
 const CONCURRENCY = parseInt(process.env.SEND_QUEUE_CONCURRENCY || '5', 10);
 const RATE_MAX = parseInt(process.env.SEND_RATE_MAX || '60', 10);
 const RATE_DURATION_MS = parseInt(process.env.SEND_RATE_DURATION_MS || '1000', 10);

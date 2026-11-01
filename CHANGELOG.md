@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ForgeChat are documented in this file.
+All notable changes to Synaptic Chat are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or adds a new row if none exists. No duplicate rows and no row-number/column
   tracking — the reliable way to keep one evolving row per contact.
 - **CRM write-back tools** — an agent can act on its own conversation's contact
-  inside ForgeChat: save the name, add tags, and set custom fields (gated by an
+  inside Synaptic Chat: save the name, add tags, and set custom fields (gated by an
   "Update CRM" toggle on the agent).
 - **Human handoff** — an `escalate_to_human` tool, configurable handoff keywords,
   and round-robin assignment to a chosen set of team members. Handing off pauses
@@ -65,9 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Brand-language pass for Meta / WhatsApp guidelines:** dropped "official … /
   unofficial hack" framing in README, reworded the login splash to no longer
-  read as if ForgeChat *is* the WhatsApp Business Platform, switched API/account
+  read as if Synaptic Chat *is* the WhatsApp Business Platform, switched API/account
   naming to the documented "WhatsApp Cloud API" and "WhatsApp Business Account",
-  scoped trademark ownership in `TRADEMARK.md` to **Forgemind AI** only and
+  scoped trademark ownership in `TRADEMARK.md` to **Synaptic Chat** only and
   added a third-party trademarks section acknowledging Meta / WhatsApp marks,
   and added an affiliation disclaimer to the README footer.
 
@@ -97,7 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-05-23
 
-Initial release of ForgeChat — a full-stack WhatsApp CRM built on the Meta
+Initial release of Synaptic Chat — a full-stack WhatsApp CRM built on the Meta
 WhatsApp Cloud API.
 
 ### Added
@@ -138,7 +138,7 @@ WhatsApp Cloud API.
   interpolation).
 - `helmet` and a 600 req/min/user rate limiter on the API surface.
 
-[Unreleased]: https://github.com/Forgemind-git/ForgeChat/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/Forgemind-git/ForgeChat/compare/v1.0.1...v1.1.0
-[1.0.1]: https://github.com/Forgemind-git/ForgeChat/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/Forgemind-git/ForgeChat/releases/tag/v1.0.0
+[Unreleased]: https://github.com/vtdhilipkumar/SynapticChat/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/vtdhilipkumar/SynapticChat/compare/v1.0.1...v1.1.0
+[1.0.1]: https://github.com/vtdhilipkumar/SynapticChat/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/vtdhilipkumar/SynapticChat/releases/tag/v1.0.0

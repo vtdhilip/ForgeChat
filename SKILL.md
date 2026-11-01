@@ -1,11 +1,11 @@
 ---
-name: forgechat-ai-agent-skill
-description: Generate a production-ready system prompt for a ForgeChat WhatsApp AI agent (order bot, booking bot, lead-capture bot, etc.) AND, when a ForgeChat MCP connector is available, build/configure that agent directly in ForgeChat over MCP. Use this skill WHENEVER the user wants to "write a prompt for an agent", "build a WhatsApp bot prompt", "create a system prompt for a client's chatbot/order assistant/booking assistant", "create/build a ForgeChat agent via MCP", set up a ForgeChat agent, or asks for an agent prompt that uses send_media / Google Sheets / HTTP tools and a step-by-step conversation flow. First interview the user for the missing details, then assemble the prompt in the exact structure below; if an MCP connector is connected, optionally create the agent with it (Phase 4). Do NOT free-write an agent prompt without this skill — the structure (step-locked flow, tool discipline, verbatim copy, anti-hallucination guardrails) is what makes these bots reliable.
+name: synapticchat-ai-agent-skill
+description: Generate a production-ready system prompt for a Synaptic Chat WhatsApp AI agent (order bot, booking bot, lead-capture bot, etc.) AND, when a Synaptic Chat MCP connector is available, build/configure that agent directly in Synaptic Chat over MCP. Use this skill WHENEVER the user wants to "write a prompt for an agent", "build a WhatsApp bot prompt", "create a system prompt for a client's chatbot/order assistant/booking assistant", "create/build a Synaptic Chat agent via MCP", set up a Synaptic Chat agent, or asks for an agent prompt that uses send_media / Google Sheets / HTTP tools and a step-by-step conversation flow. First interview the user for the missing details, then assemble the prompt in the exact structure below; if an MCP connector is connected, optionally create the agent with it (Phase 4). Do NOT free-write an agent prompt without this skill — the structure (step-locked flow, tool discipline, verbatim copy, anti-hallucination guardrails) is what makes these bots reliable.
 ---
 
-# ForgeChat AI Agent Prompt Builder
+# Synaptic Chat AI Agent Prompt Builder
 
-This skill produces the **system prompt** that drives a ForgeChat WhatsApp AI agent. The output is a single block of instructions the operator pastes into the agent node (n8n / ForgeChat). These agents run on WhatsApp, fire tools like `send_media` and a Google Sheets append, and read the customer's number from the conversation context.
+This skill produces the **system prompt** that drives a Synaptic Chat WhatsApp AI agent. The output is a single block of instructions the operator pastes into the agent node (n8n / Synaptic Chat). These agents run on WhatsApp, fire tools like `send_media` and a Google Sheets append, and read the customer's number from the conversation context.
 
 The job has two phases: **interview** the operator for the inputs, then **assemble** the prompt from the template. Never skip the interview — a vague prompt produces an unreliable bot.
 
@@ -28,7 +28,7 @@ Collect these inputs:
 - Currency — default INR (₹).
 - The full list, grouped into sections, each item with a price. For order bots this is a menu/product list; for booking bots it's services + prices/durations; for lead bots it may be plans/packages.
 
-**C. Media assets (ForgeChat `send_media` groups)**
+**C. Media assets (Synaptic Chat `send_media` groups)**
 - Which pre-configured media groups exist and their `group_index` (integer). Typical: `0` = menu / catalog image, `1` = payment link. There can be more (e.g. `2` = location, `3` = brochure).
 - For each: in which step it is sent, and how many times (almost always **exactly once**).
 
@@ -115,11 +115,11 @@ Keep all eight design principles regardless of flow.
 
 ---
 
-## Phase 4 — Build the agent in ForgeChat over MCP
+## Phase 4 — Build the agent in Synaptic Chat over MCP
 
-Phases 1–3 produce the **system prompt**. If a ForgeChat **MCP connector** is connected, you can also **create and configure the agent directly in ForgeChat** instead of pasting the prompt by hand — Claude drives the build through the MCP tools.
+Phases 1–3 produce the **system prompt**. If a Synaptic Chat **MCP connector** is connected, you can also **create and configure the agent directly in Synaptic Chat** instead of pasting the prompt by hand — Claude drives the build through the MCP tools.
 
-**Connect once:** in ForgeChat → **Admin Settings → MCP Tools**, turn on the master switch + capabilities, **Generate key**, then add the remote connector URL `https://<your-forgechat-domain>/api/mcp/http/<key>` in Claude (Settings → Connectors → Add custom connector). The connector is per-deployment — it manages that instance's data only.
+**Connect once:** in Synaptic Chat → **Admin Settings → MCP Tools**, turn on the master switch + capabilities, **Generate key**, then add the remote connector URL `https://<your-synapticchat-domain>/api/mcp/http/<key>` in Claude (Settings → Connectors → Add custom connector). The connector is per-deployment — it manages that instance's data only.
 
 **Golden rule (same as the prompt phase): never invent ids.** Fetch the real options with the discovery tools, let the user choose, summarize, and get an explicit confirmation before `create_agent`.
 

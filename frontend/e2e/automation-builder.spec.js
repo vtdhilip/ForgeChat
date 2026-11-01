@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const LOGIN_EMAIL = 'admin@forgemind.space';
+const LOGIN_EMAIL = 'vtdhilipkumar@gmail.com';
 const LOGIN_PASSWORD = 'admin123';
 
 async function login(page) {
@@ -10,7 +10,7 @@ async function login(page) {
   await page.fill('input[type="password"]', LOGIN_PASSWORD);
   await page.click('button:has-text("Sign in")');
   // Wait for the dashboard to load
-  await page.waitForSelector('text=ForgeChat', { timeout: 15000 });
+  await page.waitForSelector('text=Synaptic Chat', { timeout: 15000 });
 }
 
 async function navigateToAutomations(page) {

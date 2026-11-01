@@ -82,8 +82,9 @@ async function loadUserSession(userId, requestedOrgId = null) {
 // JWT_SECRET is guaranteed present + strong by util/instanceSecrets, which runs
 // first in index.js (resolves from env, else a persisted file, else generates
 // one). The fallback below only matters for non-standard entry points.
-const JWT_SECRET = process.env.JWT_SECRET || 'forgecrm-dev-secret-change-me';
-const COOKIE_NAME = 'forgecrm_token';
+const JWT_SECRET = process.env.JWT_SECRET || 'synapticchat-dev-secret-change-me';
+const COOKIE_NAME = 'synapticchat_token';
+const LEGACY_COOKIE_NAME = 'forgecrm_token';
 const TOKEN_EXPIRY = '24h';
 
 const router = Router();
@@ -113,7 +114,7 @@ async function ensureTables() {
     const { rows } = await client.query('SELECT COUNT(*) FROM coexistence.forgecrm_users');
     if (parseInt(rows[0].count, 10) === 0) {
       if (process.env.ADMIN_PASSWORD) {
-        const adminEmail = (process.env.ADMIN_EMAIL || 'admin@forgemind.space').trim().toLowerCase();
+        const adminEmail = (process.env.ADMIN_EMAIL || 'vtdhilipkumar@gmail.com').trim().toLowerCase();
         const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
         await client.query(
           `INSERT INTO coexistence.forgecrm_users (username, email, password, display_name, role)
@@ -139,7 +140,7 @@ function signToken(user) {
 }
 
 async function authMiddleware(req, res, next) {
-  const token = req.cookies?.[COOKIE_NAME];
+  const token = req.cookies?.[COOKIE_NAME] || req.cookies?.[LEGACY_COOKIE_NAME];
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -153,6 +154,7 @@ async function authMiddleware(req, res, next) {
   // clean re-login so every session has a role for permission checks.
   if (!payload.role) {
     res.clearCookie(COOKIE_NAME);
+    res.clearCookie(LEGACY_COOKIE_NAME);
     return res.status(401).json({ error: 'Session expired, please sign in again' });
   }
   try {
@@ -167,10 +169,12 @@ async function authMiddleware(req, res, next) {
     const u = rows[0];
     if (!u) {
       res.clearCookie(COOKIE_NAME);
+      res.clearCookie(LEGACY_COOKIE_NAME);
       return res.status(401).json({ error: 'User not found' });
     }
     if (u.is_active === false) {
       res.clearCookie(COOKIE_NAME);
+      res.clearCookie(LEGACY_COOKIE_NAME);
       return res.status(403).json({ error: 'Account disabled' });
     }
     req.user = { ...payload, role: u.role };
@@ -219,14 +223,16 @@ router.post('/auth/login', async (req, res) => {
 // GET /api/auth/me
 router.get('/auth/me', authMiddleware, async (req, res) => {
   try {
-    const activeOrgId = req.cookies?.forgecrm_active_org || req.headers['x-org-id'] || null;
+    const activeOrgId = req.cookies?.synapticchat_active_org || req.cookies?.forgecrm_active_org || req.headers['x-org-id'] || null;
     const session = await loadUserSession(req.user.id, activeOrgId);
     if (!session) {
       res.clearCookie(COOKIE_NAME);
+      res.clearCookie(LEGACY_COOKIE_NAME);
       return res.status(401).json({ error: 'User not found' });
     }
     if (session.isActive === false) {
       res.clearCookie(COOKIE_NAME);
+      res.clearCookie(LEGACY_COOKIE_NAME);
       return res.status(403).json({ error: 'Account disabled' });
     }
     res.json({ user: session });
@@ -239,6 +245,7 @@ router.get('/auth/me', authMiddleware, async (req, res) => {
 // POST /api/auth/logout
 router.post('/auth/logout', (req, res) => {
   res.clearCookie(COOKIE_NAME);
+  res.clearCookie(LEGACY_COOKIE_NAME);
   res.json({ ok: true });
 });
 

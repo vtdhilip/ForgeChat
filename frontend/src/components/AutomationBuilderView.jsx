@@ -240,7 +240,7 @@ const BUILTIN_VARS = [
   { key: "contact_number", description: "Contact phone number (alias)" },
 ];
 
-// Normalize a ForgeCRM field name into a {{variable}} token key.
+// Normalize a Synaptic Chat field name into a {{variable}} token key.
 // MUST stay identical to fieldVarKey() in backend automationEngine.js so the
 // token this picker inserts is the token the engine resolves at runtime.
 // "Date of Birth" -> "date_of_birth", "city" -> "city".
@@ -260,7 +260,7 @@ const VarPickerButton = ({ onInsert, style }) => {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
-  // Custom contact fields from ForgeCRM (Admin Settings → Fields), as variable
+  // Custom contact fields from Synaptic Chat (Admin Settings → Fields), as variable
   // tokens. Deduped against the built-ins and each other by normalized key.
   const customVars = [];
   const seen = new Set(BUILTIN_VARS.map(v => v.key));
@@ -1223,7 +1223,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
               <Field label="Latitude" style={{ flex:1 }}><Input value={dd.latitude || ""} onChange={e=>setDirect({latitude:e.target.value})} placeholder="12.97" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
               <Field label="Longitude" style={{ flex:1 }}><Input value={dd.longitude || ""} onChange={e=>setDirect({longitude:e.target.value})} placeholder="80.21" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
             </div>
-            <Field label="Location name (optional)"><VarInput value={dd.name || ""} onChange={e=>setDirect({name:e.target.value})} placeholder="e.g. Forge Realty HQ" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
+            <Field label="Location name (optional)"><VarInput value={dd.name || ""} onChange={e=>setDirect({name:e.target.value})} placeholder="e.g. Synaptic Realty HQ" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
             <Field label="Address (optional)"><VarInput value={dd.address || ""} onChange={e=>setDirect({address:e.target.value})} placeholder="e.g. 123 Anna Nagar, Chennai" style={{ padding:"6px 9px", fontSize:11 }}/></Field>
           </>;
         case "contact":
@@ -2448,7 +2448,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
   else if (node.type==="ai") {
     const aiTask    = node.aiTask    || "lead_qualification";
     const aiGoal    = node.aiGoal    !== undefined ? node.aiGoal    : "Qualify the lead by asking about budget, timeline, and preferred area. Politely escalate to a human if the lead is hot.";
-    const aiContext = node.aiContext !== undefined ? node.aiContext : "We are Forge Realty, a Chennai-based real-estate agency. Our active inventory: 2BHK & 3BHK apartments in Anna Nagar (₹85L–₹1.2Cr), Adyar (₹1.4Cr–₹2.1Cr), and Velachery (₹70L–₹95L). Site visits Mon–Sat 11 AM – 6 PM. Token amount ₹50,000 (refundable).";
+    const aiContext = node.aiContext !== undefined ? node.aiContext : "We are Synaptic Realty, a Chennai-based real-estate agency. Our active inventory: 2BHK & 3BHK apartments in Anna Nagar (₹85L–₹1.2Cr), Adyar (₹1.4Cr–₹2.1Cr), and Velachery (₹70L–₹95L). Site visits Mon–Sat 11 AM – 6 PM. Token amount ₹50,000 (refundable).";
     const aiSaveTo  = node.aiSaveTo  || "ai_summary";
     const aiFallback= node.aiFallback|| "fallback_message";
     const fallbackTemplateId = node.fallbackTemplateId || "";
@@ -2614,7 +2614,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
                         style={{ fontFamily:"'DM Mono'", fontSize:11 }}
                       />
                       <div style={{ fontSize:10, color:C.text5, fontWeight:500, lineHeight:1.4 }}>
-                        The resolved value must be a numeric user id (forgecrm_users.id). If it's missing, disabled, or not an admin/BDA Sales user, the step fails.
+                        The resolved value must be a numeric user id. If it's missing, disabled, or not an admin/BDA Sales user, the step fails.
                       </div>
                     </>
                   ) : (

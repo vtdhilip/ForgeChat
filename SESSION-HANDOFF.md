@@ -1,8 +1,8 @@
-# ForgeCRM OSS — Session Handoff (Simplification Effort)
+# Synaptic Chat — Session Handoff
 
 > **Read this first when resuming.** It records a multi-task session that simplified ForgeCRM OSS,
 > module by module, into a **single-owner, stripped-down WhatsApp CRM**. Date: **2026-05-22**.
-> Login: `admin@forgemind.space` / your `ADMIN_PASSWORD` (or the password printed in the backend logs on first boot). App: backend `:3001`, frontend `:5173`.
+> Login: `vtdhilipkumar@gmail.com` / your `ADMIN_PASSWORD`. App: backend `:3011`, frontend `:8080`.
 
 ## TL;DR — what this session did
 

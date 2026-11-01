@@ -1,28 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { Info, LogOut, Settings, AlertTriangle, Star, Github } from 'lucide-react';
+import { LogOut, Settings, AlertTriangle } from 'lucide-react';
 import { C, FONT } from '../constants.js';
 import { api } from '../api.js';
-
-// This project's GitHub repo — powers the star counter in the header.
-const GITHUB_REPO = 'Forgemind-git/ForgeChat';
-const GITHUB_REPO_URL = `https://github.com/${GITHUB_REPO}`;
 
 export default function Topbar({ user, onLogout, onNavigate }) {
   const [userOpen, setUserOpen] = useState(false);
   const [unhealthyAccounts, setUnhealthyAccounts] = useState([]);
-  const [stars, setStars] = useState(null);
   const ref = useRef(null);
-
-  // Fetch the repo's live star count from the public GitHub API. Best-effort:
-  // if it fails (offline / rate-limited) we just show the button without a count.
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`https://api.github.com/repos/${GITHUB_REPO}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (!cancelled && d && typeof d.stargazers_count === 'number') setStars(d.stargazers_count); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -131,40 +115,6 @@ export default function Topbar({ user, onLogout, onNavigate }) {
 
       {/* Right controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* GitHub stars — opens this project's repo */}
-        <button
-          onClick={() => window.open(GITHUB_REPO_URL, '_blank', 'noopener,noreferrer')}
-          title="Star Synaptic Chat on GitHub"
-          style={{
-            height: 36, borderRadius: 9, padding: '0 12px',
-            background: C.headerSurface, border: `1.5px solid ${C.headerBorder}`,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7,
-            color: C.headerText, fontFamily: FONT, fontSize: 13, fontWeight: 600,
-          }}
-        >
-          <Github size={16} color={C.headerText} />
-          <Star size={14} color="#F5B400" fill="#F5B400" />
-          <span style={{ minWidth: 8, textAlign: 'left' }}>{stars == null ? '—' : stars}</span>
-        </button>
-
-        {/* About Us */}
-        <button
-          onClick={() => onNavigate('about')}
-          title="About Us"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 9,
-            background: C.headerSurface,
-            border: `1.5px solid ${C.headerBorder}`,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <Info size={16} color={C.headerText} />
-        </button>
-
         {/* User avatar */}
         <div ref={ref} style={{ position: 'relative' }}>
           <button

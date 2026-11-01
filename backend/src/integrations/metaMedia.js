@@ -64,7 +64,7 @@ async function downloadMediaBinary(url, accessToken) {
     redirect: 'error', // no open-redirect pivoting to internal hosts
     headers: {
       Authorization: `Bearer ${token}`,
-      'User-Agent': 'ForgeChat/1.0 (+https://github.com/Forgemind-git/Forge-Chat)',
+      'User-Agent': 'SynapticChat/1.0',
     },
   });
   if (!res.ok) {

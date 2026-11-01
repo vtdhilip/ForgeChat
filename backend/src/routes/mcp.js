@@ -134,11 +134,11 @@ adminRouter.delete('/mcp/keys/:id', adminOnly, async (req, res) => {
 
 adminRouter.get('/mcp/install', adminOnly, (req, res) => {
   const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0];
-  const host = req.headers['x-forwarded-host'] || req.headers.host || (process.env.FORGECRM_DOMAIN || '');
+  const host = req.headers['x-forwarded-host'] || req.headers.host || (process.env.SYNAPTICCHAT_DOMAIN || process.env.FORGECRM_DOMAIN || '');
   const base = `${proto}://${host}`;
   const apiUrl = `${base}/api/mcp/v1`;
   const remoteUrl = `${base}/api/mcp/http/<YOUR_KEY>`;
-  const serverPath = process.env.MCP_SERVER_PATH || '/root/Forge-Chat/mcp-server/src/index.js';
+  const serverPath = process.env.MCP_SERVER_PATH || '/root/synaptic-chat/mcp-server/src/index.js';
   res.json({
     // Remote (hosted) connector — paste this URL (with a real key) into Claude's
     // "Add custom connector" dialog or any MCP client. No local files needed.
@@ -148,10 +148,10 @@ adminRouter.get('/mcp/install', adminOnly, (req, res) => {
     serverPath,
     configSnippet: {
       mcpServers: {
-        'forgechat-agents': {
+        'synapticchat-agents': {
           command: 'node',
           args: [serverPath],
-          env: { FORGECHAT_API_URL: apiUrl, FORGECHAT_API_KEY: 'fck_live_PASTE_YOUR_KEY' },
+          env: { SYNAPTICCHAT_API_URL: apiUrl, SYNAPTICCHAT_API_KEY: 'sck_live_PASTE_YOUR_KEY' },
         },
       },
     },

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# ForgeChat - one-command server installer.
+# Synaptic Chat - one-command server installer.
 #
-# Deploys ForgeChat on a public server with automatic HTTPS (Let's Encrypt via
+# Deploys Synaptic Chat on a public server with automatic HTTPS (Let's Encrypt via
 # the bundled Caddy). It only asks for your domain; everything else - secrets,
 # database, migrations, certificate - is handled automatically on first boot.
 #
@@ -37,7 +37,7 @@ ask_continue() {
   case "$_r" in y|Y|yes|YES) return 0 ;; *) die "Aborted." ;; esac
 }
 
-printf '%sForgeChat server installer%s\n' "$BOLD" "$RST"
+printf '%sSynaptic Chat server installer%s\n' "$BOLD" "$RST"
 printf -- '------------------------------------------------------------\n'
 
 # -- 1. prerequisites ---------------------------------------------------------
@@ -46,7 +46,7 @@ command -v docker >/dev/null 2>&1 \
 docker compose version >/dev/null 2>&1 \
   || die "Docker Compose v2 isn't available. Update Docker, then re-run."
 if [ ! -f docker-compose.yml ] || [ ! -f docker-compose.prod.yml ]; then
-  die "Run this from the cloned Forge-Chat directory (compose files not found here)."
+  die "Run this from the cloned Synaptic Chat directory (compose files not found here)."
 fi
 ok "Docker and Compose detected"
 
@@ -61,7 +61,7 @@ fi
 DOMAIN="${1:-${DOMAIN:-}}"
 if [ -z "$DOMAIN" ]; then
   printf '\n'
-  printf 'Enter the domain this ForgeChat will be reached at.\n'
+  printf 'Enter the domain this Synaptic Chat will be reached at.\n'
   printf 'It must be a domain %syou own%s (e.g. chat.yourbusiness.com) whose DNS\n' "$BOLD" "$RST"
   printf '%sA record points at this server%s. Do not use someone else'"'"'s domain.\n' "$BOLD" "$RST"
   printf '%sDomain:%s ' "$CYN" "$RST"
@@ -84,7 +84,7 @@ if [ -z "$ALREADY_UP" ] && command -v ss >/dev/null 2>&1; then
   ss -ltn 2>/dev/null | grep -qE ':443($| )' && busy="${busy:+$busy and }443"
   if [ -n "$busy" ]; then
     warn "Something is already using port $busy on this server."
-    warn "ForgeChat's HTTPS proxy needs 80 and 443 free - another web server or"
+    warn "Synaptic Chat's HTTPS proxy needs 80 and 443 free - another web server or"
     warn "reverse proxy is probably running. Stop it, or use a clean server."
     ask_continue "Continue anyway?"
   else
@@ -110,7 +110,7 @@ elif [ -n "$myip" ]; then
 fi
 
 # -- 5. deploy ----------------------------------------------------------------
-printf '\n%sStarting ForgeChat for %s%s - building images (first run takes a few minutes)...\n' "$BOLD" "$DOMAIN" "$RST"
+printf '\n%sStarting Synaptic Chat for %s%s - building images (first run takes a few minutes)...\n' "$BOLD" "$DOMAIN" "$RST"
 DOMAIN="$DOMAIN" "${COMPOSE[@]}" up -d --build
 
 # -- 6. wait for HTTPS, then summarise ----------------------------------------
@@ -125,7 +125,7 @@ done
 
 printf -- '------------------------------------------------------------\n'
 if [ -n "$ready" ]; then
-  ok "ForgeChat is live at ${BOLD}${url}${RST}"
+  ok "Synaptic Chat is live at ${BOLD}${url}${RST}"
 else
   warn "Containers are up, but $url didn't answer yet."
   warn "If you just pointed DNS, give the certificate a minute, then reload."

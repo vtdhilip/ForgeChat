@@ -4,7 +4,7 @@ import { C, FONT } from '../constants.js';
 
 /**
  * Searchable single-select dropdown — a drop-in replacement for a native
- * <select> that adds a type-to-filter search box. Matches the Forge look of the
+ * <select> that adds a type-to-filter search box. Matches the Synaptic look of the
  * old selects (full-width trigger, 1.5px border, chevron on the right).
  *
  * Props:

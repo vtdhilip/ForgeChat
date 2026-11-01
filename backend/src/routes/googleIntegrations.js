@@ -88,7 +88,7 @@ router.get('/google-integrations/status', async (req, res) => {
 
 /**
  * Admin-only management of the workspace's Google OAuth app credentials
- * (Client ID / Secret / Redirect URI). These identify this ForgeChat install to
+ * (Client ID / Secret / Redirect URI). These identify this Synaptic Chat install to
  * Google and are shared across all users' connections, so only admins may read
  * or change them — same posture as the AI Models registry. The Client Secret is
  * never returned in plaintext.

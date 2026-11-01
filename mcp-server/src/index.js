@@ -1,24 +1,24 @@
 #!/usr/bin/env node
-// ForgeChat Agent Builder — MCP server.
+// Synaptic Chat Agent Builder — MCP server.
 //
-// A thin, well-described client over the ForgeChat MCP API
+// A thin, well-described client over the Synaptic Chat MCP API
 // (/api/mcp/v1, bearer-authed). It exposes DISCOVERY tools (so the assistant
 // can offer the user their real WhatsApp numbers, models, spreadsheets, tabs,
 // media and templates) and MUTATION tools (create/update/delete agents + tools).
 //
 // The assistant is expected to gather + confirm the full config with the user
-// BEFORE calling create_agent — see the `create-forgechat-agent` prompt and the
+// BEFORE calling create_agent — see the `create-synapticchat-agent` prompt and the
 // tool descriptions.
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
-const API_URL = (process.env.FORGECHAT_API_URL || '').replace(/\/$/, '');
-const API_KEY = process.env.FORGECHAT_API_KEY || '';
+const API_URL = (process.env.SYNAPTICCHAT_API_URL || process.env.FORGECHAT_API_URL || '').replace(/\/$/, '');
+const API_KEY = process.env.SYNAPTICCHAT_API_KEY || process.env.FORGECHAT_API_KEY || '';
 
 if (!API_URL || !API_KEY) {
-  console.error('[forgechat-mcp] FORGECHAT_API_URL and FORGECHAT_API_KEY env vars are required.');
+  console.error('[synapticchat-mcp] SYNAPTICCHAT_API_URL and SYNAPTICCHAT_API_KEY env vars are required.');
   process.exit(1);
 }
 
@@ -54,7 +54,7 @@ function tool(fn) {
   };
 }
 
-const server = new McpServer({ name: 'forgechat-agents', version: '1.0.0' });
+const server = new McpServer({ name: 'synapticchat-agents', version: '1.0.0' });
 
 /* ============================== discovery ============================== */
 
@@ -113,7 +113,7 @@ server.registerTool('read_sheet_values', {
 
 server.registerTool('list_media', {
   title: 'List media library items',
-  description: 'List items from the ForgeChat media library, optionally filtered by type and/or name. Returns [{ id, name, mediaType, mimeType }]. When the user mentions a media file by name (e.g. "use the logo image"), call this with that name to resolve it to an id automatically — then use that id in mediaGroups. Never ask the user for an id.',
+  description: 'List items from the Synaptic Chat media library, optionally filtered by type and/or name. Returns [{ id, name, mediaType, mimeType }]. When the user mentions a media file by name (e.g. "use the logo image"), call this with that name to resolve it to an id automatically — then use that id in mediaGroups. Never ask the user for an id.',
   inputSchema: {
     type: z.enum(['image', 'video', 'audio', 'document']).optional().describe('Optional media type filter.'),
     name: z.string().optional().describe('Partial name search (case-insensitive). Use when the user mentions a media file by name.'),
@@ -163,7 +163,7 @@ const mediaGroupSchema = z.object({
 server.registerTool('create_agent', {
   title: 'Create agent',
   description:
-    'Create a new ForgeChat AI agent. IMPORTANT: gather and CONFIRM all settings with the user first ' +
+    'Create a new Synaptic Chat AI agent. IMPORTANT: gather and CONFIRM all settings with the user first ' +
     '(purpose, name, system prompt, WhatsApp number, model, trigger, tools). For an ACTIVE agent you must ' +
     'pass aiModelId + llmModel; otherwise pass status:"draft". Only one active agent is allowed per WhatsApp number. ' +
     'After creating, use add_google_sheets_tool to attach a Sheets tool if the user wanted one.',
@@ -303,7 +303,7 @@ server.registerTool('delete_agent', {
 
 /* =============================== prompt =============================== */
 
-const GUIDE = `You are creating a ForgeChat WhatsApp AI agent. Gather and CONFIRM the full configuration with the user before calling create_agent. Offer real options fetched from their account — never guess ids, spreadsheets, tabs, models, or numbers.
+const GUIDE = `You are creating a Synaptic Chat WhatsApp AI agent. Gather and CONFIRM the full configuration with the user before calling create_agent. Offer real options fetched from their account — never guess ids, spreadsheets, tabs, models, or numbers.
 
 Walk this flow:
 1. Ask what the agent should do (its purpose / goal).
@@ -330,9 +330,9 @@ Walk this flow:
 
 Notes: an ACTIVE agent needs both aiModelId and llmModel (otherwise save status:"draft"). Only one active agent per WhatsApp number. Always confirm destructive actions (delete) first.`;
 
-server.registerPrompt('create-forgechat-agent', {
-  title: 'Create a ForgeChat agent',
-  description: 'Guided flow to create and configure a ForgeChat WhatsApp AI agent (asks the right questions, then creates it).',
+server.registerPrompt('create-synapticchat-agent', {
+  title: 'Create a Synaptic Chat agent',
+  description: 'Guided flow to create and configure a Synaptic Chat WhatsApp AI agent (asks the right questions, then creates it).',
   argsSchema: {},
 }, () => ({
   messages: [{ role: 'user', content: { type: 'text', text: GUIDE } }],
@@ -342,4 +342,4 @@ server.registerPrompt('create-forgechat-agent', {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error('[forgechat-mcp] ready');
+console.error('[synapticchat-mcp] ready');
