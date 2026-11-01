@@ -229,26 +229,36 @@ async def list_organizations(user: dict = Depends(get_current_user)):
         ]
     }
 
-@router.post("/{org_id}/switch")
-async def switch_organization(org_id: str, response: Response, user: dict = Depends(get_current_user)):
+class SwitchOrgPayload(BaseModel):
+    org_id: str
+
+async def _do_switch_org(org_id: str, response: Response, user: dict):
     user_id = user["id"]
     is_super_admin = user.get("role") == "admin"
 
     if is_super_admin:
-        org = await db.fetchrow("SELECT id, name, slug FROM coexistence.organizations WHERE id::text = $1 OR slug = $1", org_id)
+        org = await db.fetchrow(
+            """
+            SELECT o.id, o.name, o.slug, o.plan, o.settings, om.role
+              FROM coexistence.organizations o
+              LEFT JOIN coexistence.organization_members om ON om.org_id = o.id AND om.user_id = $2
+             WHERE o.id::text = $1 OR o.slug = $1
+            """,
+            org_id, user_id
+        )
     else:
         org = await db.fetchrow(
             """
-            SELECT o.id, o.name, o.slug
+            SELECT o.id, o.name, o.slug, o.plan, o.settings, om.role
               FROM coexistence.organizations o
-              JOIN coexistence.organization_members om ON om.org_id = o.id
-             WHERE (o.id::text = $1 OR o.slug = $1) AND om.user_id = $2 AND o.is_active = true
+              JOIN coexistence.organization_members om ON om.org_id = o.id AND om.user_id = $2
+             WHERE (o.id::text = $1 OR o.slug = $1) AND o.is_active = true
             """,
             org_id, user_id
         )
 
     if not org:
-        raise HTTPException(status_code=404, detail="Organization not found or access denied")
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
 
     org_id_str = str(org["id"])
     response.set_cookie(
@@ -256,15 +266,32 @@ async def switch_organization(org_id: str, response: Response, user: dict = Depe
         value=org_id_str,
         httponly=False,
         samesite="lax",
-        max_age=30 * 86400
+        max_age=365 * 86400
     )
-    # Also set legacy cookie for compatibility
     response.set_cookie(
         key="forgecrm_active_org",
         value=org_id_str,
         httponly=False,
         samesite="lax",
-        max_age=30 * 86400
+        max_age=365 * 86400
     )
 
-    return {"success": True, "activeOrg": {"id": org_id_str, "name": org["name"], "slug": org["slug"]}}
+    return {
+        "success": True,
+        "activeOrg": {
+            "id": org_id_str,
+            "name": org["name"],
+            "slug": org["slug"],
+            "plan": org["plan"],
+            "settings": org["settings"] or {},
+            "role": org["role"] or ("owner" if is_super_admin else "viewer"),
+        }
+    }
+
+@router.post("/switch")
+async def switch_organization_post(payload: SwitchOrgPayload, response: Response, user: dict = Depends(get_current_user)):
+    return await _do_switch_org(payload.org_id, response, user)
+
+@router.post("/{org_id}/switch")
+async def switch_organization(org_id: str, response: Response, user: dict = Depends(get_current_user)):
+    return await _do_switch_org(org_id, response, user)
