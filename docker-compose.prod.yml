@@ -25,6 +25,7 @@ services:
     ports: !reset []
 
   caddy:
+    container_name: synapticchat-caddy
     image: caddy:2
     restart: unless-stopped
     ports:

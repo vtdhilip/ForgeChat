@@ -1,6 +1,7 @@
 # Docker Compose override for running the Python FastAPI backend
 services:
   forgecrm-backend:
+    container_name: synapticchat-backend
     build:
       context: ./backend-python
       dockerfile: Dockerfile

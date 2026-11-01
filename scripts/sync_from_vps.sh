@@ -4,7 +4,7 @@ set -e
 # Sync database from production VPS to local Docker PostgreSQL container
 VPS_HOST="50.6.44.53"
 VPS_USER="root"
-LOCAL_CONTAINER="synapticchat-forgecrm-db-1"
+LOCAL_CONTAINER="${LOCAL_CONTAINER:-synapticchat-db}"
 
 echo "=========================================================="
 echo " Synaptic Chat: Production VPS -> Local Docker DB Sync"
