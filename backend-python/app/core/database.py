@@ -3,6 +3,8 @@ import asyncpg
 from typing import Optional, List, Dict, Any
 from app.core.config import settings
 
+from contextlib import asynccontextmanager
+
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
@@ -71,3 +73,11 @@ class Database:
             return await conn.execute(query, *args)
 
 db = Database()
+
+@asynccontextmanager
+async def get_db():
+    if not db.pool:
+        await db.connect()
+    async with db.pool.acquire() as conn:
+        yield conn
+

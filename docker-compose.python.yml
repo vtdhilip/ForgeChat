@@ -14,6 +14,7 @@ services:
       FORGECHAT_DATA_DIR: /app/data
       MEDIA_DIR: /app/media
       UPLOADS_DIR: /app/uploads
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3011", "--reload"]
     volumes:
       - ./backend-python:/app
       - secrets:/app/data

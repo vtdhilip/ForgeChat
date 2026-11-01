@@ -104,3 +104,28 @@ async def sync_products_from_shopify(domain: str, access_token: Optional[str] = 
                 print(f"[productCatalog] Admin API fetch failed for {clean_domain}: {admin_err}")
 
     return count
+
+async def resolve_product_name(retailer_id: Optional[str]) -> str:
+    if not retailer_id:
+        return "Product"
+    id_str = str(retailer_id).strip()
+    if re.search(r"[a-zA-Z]", id_str):
+        return id_str
+
+    if id_str in memory_cache:
+        return memory_cache[id_str]
+
+    try:
+        await ensure_product_table()
+        row = await db.fetchrow(
+            "SELECT title FROM coexistence.product_catalog_cache WHERE variant_id = $1 LIMIT 1",
+            id_str,
+        )
+        if row and row.get("title"):
+            memory_cache[id_str] = row["title"]
+            return row["title"]
+    except Exception as err:
+        print(f"[productCatalog] DB cache lookup failed for {id_str}: {err}")
+
+    return "Product"
+

@@ -344,6 +344,31 @@ crontab -e
 
 ---
 
+## 🐍 Python FastAPI Backend & Git Restoration
+
+Synaptic Chat backend is fully ported to **Python 3.11 with FastAPI**, offering async I/O performance with `asyncpg`, native Pydantic validation, and 100% cryptographic compatibility with existing tokens (AES-256-GCM) and user passwords (bcrypt).
+
+### Git Restorable Architecture
+
+The entire codebase is structured so you can toggle between the **Python (FastAPI)** and **Node.js (Express)** backend at any time without data loss:
+
+#### 1. Running Python (FastAPI):
+```bash
+git checkout feat/fastapi-backend
+docker compose -f docker-compose.yml -f docker-compose.python.yml up -d --build
+```
+Interactive OpenAPI documentation is available at `http://localhost:8080/api/docs`.
+
+#### 2. Restoring Node.js (Express):
+```bash
+git checkout main
+docker compose -f docker-compose.yml up -d --build
+```
+
+Both backends share the identical PostgreSQL database, Redis instance, encryption keys, and React frontend without requiring any database schema changes or data migrations.
+
+---
+
 ## 📄 License
 
 Synaptic Chat is distributed under the **[MIT License](./LICENSE.md)**.
