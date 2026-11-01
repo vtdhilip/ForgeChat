@@ -16,7 +16,10 @@ from app.routers import (
     whatsapp_accounts,
     messages,
     media,
-    media_library
+    media_library,
+    pipelines,
+    templates,
+    broadcasts
 )
 
 @asynccontextmanager
@@ -59,6 +62,9 @@ app.include_router(whatsapp_accounts.router)
 app.include_router(messages.router)
 app.include_router(media.router)
 app.include_router(media_library.router)
+app.include_router(pipelines.router)
+app.include_router(templates.router)
+app.include_router(broadcasts.router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

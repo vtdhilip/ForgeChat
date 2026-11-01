@@ -148,3 +148,29 @@ async def upload_media(
         if not media_id:
             raise Exception("Meta media upload did not return an ID")
         return media_id
+
+async def submit_template(waba_id: str, access_token: str, payload: dict) -> dict:
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{waba_id}/message_templates"
+    return await post_json(url, access_token, payload)
+
+async def delete_template(waba_id: str, access_token: str, name: str) -> bool:
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{waba_id}/message_templates?name={name}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.delete(url, headers={"Authorization": f"Bearer {access_token}"})
+        if resp.status_code >= 400:
+            raise Exception(f"Meta delete {resp.status_code}: {resp.text[:200]}")
+        return True
+
+async def list_templates(waba_id: str, access_token: str, fields: Optional[str] = None, limit: int = 100) -> List[dict]:
+    f = fields or "name,language,status,category,previous_category,quality_score,rejected_reason,id"
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{waba_id}/message_templates?fields={f}&limit={limit}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {access_token}"})
+        if resp.status_code >= 400:
+            raise Exception(f"Meta listTemplates {resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        return data.get("data", [])
+
+async def edit_template(meta_template_id: str, access_token: str, payload: dict) -> dict:
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{meta_template_id}"
+    return await post_json(url, access_token, payload)
