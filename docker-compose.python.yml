@@ -1,0 +1,25 @@
+# Docker Compose override for running the Python FastAPI backend
+services:
+  forgecrm-backend:
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3011"
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-forgechat}@forgecrm-db:5432/postgres
+      REDIS_URL: redis://redis:6379
+      SYNAPTICCHAT_DATA_DIR: /app/data
+      FORGECHAT_DATA_DIR: /app/data
+      MEDIA_DIR: /app/media
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - secrets:/app/data
+      - media:/app/media
+      - uploads:/app/uploads
+    depends_on:
+      forgecrm-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
