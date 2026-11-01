@@ -6,7 +6,7 @@ import uvicorn
 
 from app.core.config import settings
 from app.core.database import db
-from app.routers import health, auth, organizations
+from app.routers import health, auth, organizations, users
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +41,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(organizations.router)
+app.include_router(users.router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
