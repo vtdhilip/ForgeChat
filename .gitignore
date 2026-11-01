@@ -80,3 +80,12 @@ ForgeMind_CICD_Setup_Guide.pdf
 graphify-out/
 .venv/
 
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
