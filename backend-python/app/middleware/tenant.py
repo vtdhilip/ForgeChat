@@ -1,13 +1,31 @@
 from fastapi import Request, HTTPException, status, Depends
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, Optional
 from app.core.database import db
 from app.middleware.auth import get_current_user
 
 class TenantContext:
-    def __init__(self, org_id: str, org_role: str, org: Dict[str, Any]):
+    def __init__(self, org_id: str, org_role: str, org: Dict[str, Any], user: Optional[Dict[str, Any]] = None):
         self.org_id = org_id
         self.org_role = org_role
         self.org = org
+        self.user = user or {}
+
+    def __getitem__(self, item):
+        if item == "org_id":
+            return self.org_id
+        if item == "org_role":
+            return self.org_role
+        if item == "org":
+            return self.org
+        if item == "user":
+            return self.user
+        raise KeyError(item)
+
+    def get(self, item, default=None):
+        try:
+            return self[item]
+        except KeyError:
+            return default
 
 async def get_tenant_context(
     request: Request,
@@ -90,7 +108,7 @@ async def get_tenant_context(
         "role": member_role,
     }
 
-    ctx = TenantContext(org_id=org_id_str, org_role=member_role, org=org_dict)
+    ctx = TenantContext(org_id=org_id_str, org_role=member_role, org=org_dict, user=user)
     request.state.org_id = org_id_str
     request.state.org_role = member_role
     request.state.org = org_dict

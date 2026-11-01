@@ -6,7 +6,18 @@ import uvicorn
 
 from app.core.config import settings
 from app.core.database import db
-from app.routers import health, auth, organizations, users
+from app.routers import (
+    health,
+    auth,
+    organizations,
+    users,
+    categories,
+    contact_fields,
+    whatsapp_accounts,
+    messages,
+    media,
+    media_library
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +53,12 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(organizations.router)
 app.include_router(users.router)
+app.include_router(categories.router)
+app.include_router(contact_fields.router)
+app.include_router(whatsapp_accounts.router)
+app.include_router(messages.router)
+app.include_router(media.router)
+app.include_router(media_library.router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

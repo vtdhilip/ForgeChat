@@ -15,6 +15,7 @@ services:
       MEDIA_DIR: /app/media
       UPLOADS_DIR: /app/uploads
     volumes:
+      - ./backend-python:/app
       - secrets:/app/data
       - media:/app/media
       - uploads:/app/uploads

@@ -2,24 +2,29 @@ from typing import Optional, Dict, Any, List
 from app.core.database import db
 from app.core.permissions import effective_pages
 
-async def load_user_session(user_id: int, requested_org_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+async def load_user_session(user_id: Any, requested_org_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Constructs the full session object matching Node's loadUserSession:
     identity, role, effective pages, assigned WA numbers, organizations, and activeOrg.
     """
+    try:
+        uid = int(user_id)
+    except (ValueError, TypeError):
+        return None
+
     user_row = await db.fetchrow(
         """
         SELECT id, username, email, display_name, role, permissions, is_active, last_login_at
           FROM coexistence.forgecrm_users WHERE id = $1
         """,
-        user_id
+        uid
     )
     if not user_row:
         return None
 
     wa_rows = await db.fetch(
         "SELECT wa_number FROM coexistence.user_wa_assignments WHERE user_id = $1",
-        user_id
+        uid
     )
 
     is_super_admin = user_row["role"] == "admin"
@@ -42,7 +47,7 @@ async def load_user_session(user_id: int, requested_org_id: Optional[str] = None
              ORDER BY o.created_at ASC
         """
 
-    org_rows = await db.fetch(orgs_query, user_id)
+    org_rows = await db.fetch(orgs_query, uid)
 
     active_org = None
     if org_rows:
