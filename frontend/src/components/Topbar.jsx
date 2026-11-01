@@ -209,9 +209,33 @@ export default function Topbar({ user, onLogout, onNavigate }) {
                   {user.displayName || user.username}
                 </div>
                 <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                  Owner
+                  {user.role === 'admin' ? 'Super Admin' : 'Member'}
                 </div>
               </div>
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => { setUserOpen(false); onNavigate('super-admin'); }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    borderRadius: 6,
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    cursor: 'pointer',
+                    color: '#16a34a',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: FONT,
+                    marginBottom: 4,
+                  }}
+                >
+                  <Settings size={14} />
+                  Super Admin Panel
+                </button>
+              )}
               <button
                 onClick={() => { setUserOpen(false); onNavigate('admin-settings'); }}
                 style={{

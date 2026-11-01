@@ -365,4 +365,17 @@ export const api = {
       return res.json();
     });
   },
+  organizations: {
+    list: () => req('/organizations'),
+    get: (id) => req(`/organizations/${id}`),
+    create: (data) => req('/organizations', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => req(`/organizations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    switch: (org_id) => req('/organizations/switch', { method: 'POST', body: JSON.stringify({ org_id }) }),
+    getMembers: (id) => req(`/organizations/${id}/members`),
+    addMember: (id, data) => req(`/organizations/${id}/members`, { method: 'POST', body: JSON.stringify(data) }),
+    removeMember: (id, userId) => req(`/organizations/${id}/members/${userId}`, { method: 'DELETE' }),
+    getSuperAdminOverview: () => req('/organizations/super-admin/overview'),
+    onboardClient: (data) => req('/organizations/super-admin/onboard', { method: 'POST', body: JSON.stringify(data) }),
+    updateClientModules: (id, data) => req(`/organizations/${id}/modules`, { method: 'PUT', body: JSON.stringify(data) }),
+  },
 };

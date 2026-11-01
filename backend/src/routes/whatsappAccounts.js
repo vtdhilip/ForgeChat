@@ -53,15 +53,20 @@ function publicShape(row, { includeSecrets = false } = {}) {
   return out;
 }
 
-// List all accounts (any authenticated user — needed for template/broadcast pickers)
+// List all accounts for current tenant
 router.get('/whatsapp-accounts', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT * FROM coexistence.whatsapp_accounts
-        WHERE ($1::boolean IS NULL OR is_active = $1)
-        ORDER BY is_default DESC, display_name ASC`,
-      [req.query.activeOnly === 'true' ? true : null]
-    );
+    let query = `SELECT * FROM coexistence.whatsapp_accounts WHERE ($1::boolean IS NULL OR is_active = $1)`;
+    const params = [req.query.activeOnly === 'true' ? true : null];
+
+    if (req.orgId) {
+      params.push(req.orgId);
+      query += ` AND org_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY is_default DESC, display_name ASC`;
+
+    const { rows } = await pool.query(query, params);
     const includeSecrets = isAdmin(req.user);
     res.json(rows.map(r => publicShape(r, { includeSecrets })));
   } catch (err) {
@@ -93,10 +98,14 @@ router.get('/whatsapp-accounts/by-phone/:phone', async (req, res) => {
 // full access token).
 router.get('/whatsapp-accounts/:id', adminOnly, async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1',
-      [req.params.id]
-    );
+    let query = 'SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1';
+    const params = [req.params.id];
+    if (req.orgId && req.user.role !== 'admin') {
+      params.push(req.orgId);
+      query += ` AND org_id = $${params.length}`;
+    }
+
+    const { rows } = await pool.query(query, params);
     if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json(publicShape(rows[0], { includeSecrets: true }));
   } catch (err) {
@@ -112,15 +121,22 @@ router.post('/whatsapp-accounts', adminOnly, async (req, res) => {
       return res.status(400).json({ error: 'Phone Number ID, WhatsApp Business Account ID and Permanent Access Token are required' });
     }
 
-    // Single-account system: refuse to register a second WhatsApp Business account.
-    const { rows: existing } = await pool.query('SELECT COUNT(*)::int AS n FROM coexistence.whatsapp_accounts');
-    if (existing[0].n >= 1) {
-      return res.status(409).json({ error: 'Only one WhatsApp Business account is allowed. Edit the existing account instead.' });
+    const orgId = req.orgId;
+
+    // Check if this tenant already has an account registered
+    if (orgId) {
+      const { rows: existing } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM coexistence.whatsapp_accounts WHERE org_id = $1',
+        [orgId]
+      );
+      if (existing[0].n >= 1) {
+        return res.status(409).json({ error: 'Only one WhatsApp Business account is allowed per organization. Edit the existing account instead.' });
+      }
     }
 
     // Best-effort: resolve the human-readable number + verified business name
     // from Meta so chat threading and display still work without the user
-    // typing them. Saving proceeds even if the lookup fails (logged).
+    // typing them.
     let displayName = `WhatsApp ${wabaId.trim()}`;
     let displayPhoneNumber = '';
     try {
@@ -128,10 +144,6 @@ router.post('/whatsapp-accounts', adminOnly, async (req, res) => {
       if (meta.verified_name) displayName = meta.verified_name;
       if (meta.display_phone_number) displayPhoneNumber = String(meta.display_phone_number).replace(/\D/g, '');
     } catch (e) {
-      // Don't save a half-working account. The lookup doubles as a credential
-      // check, so a failure here means the Phone Number ID + token combination
-      // can't talk to Meta (wrong ID, wrong app, or an expired token — a Meta
-      // *test number*'s token expires every 24h). Surface Meta's reason.
       console.warn('[whatsapp-accounts] Meta credential check failed:', e.message);
       return res.status(400).json({
         error: `Couldn't verify this WhatsApp number with Meta. Double-check your Phone Number ID and access token (a test number's token expires every 24 hours). Meta said: ${e.message}`,
@@ -141,17 +153,17 @@ router.post('/whatsapp-accounts', adminOnly, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      // The lone account is always the default and active.
       const { rows } = await client.query(
         `INSERT INTO coexistence.whatsapp_accounts
           (display_name, display_phone_number, phone_number_id, waba_id, meta_app_id,
-           access_token_encrypted, verify_token_encrypted, is_default, is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,TRUE)
+           access_token_encrypted, verify_token_encrypted, is_default, is_active, org_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,TRUE,$8)
          RETURNING *`,
         [
           displayName, displayPhoneNumber, phoneNumberId.trim(), wabaId.trim(),
           metaAppId?.trim() || null,
           encrypt(accessToken.trim()), encrypt((verifyToken || '').trim()),
+          orgId || null,
         ]
       );
       await client.query('COMMIT');

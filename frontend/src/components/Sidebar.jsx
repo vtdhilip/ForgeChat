@@ -1,29 +1,43 @@
 import {
   Home, Zap, LayoutTemplate, MessageCircle, Users,
   Megaphone, Image as ImageIcon, Info, KanbanSquare, Bot,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Shield,
 } from 'lucide-react';
 import { C, FONT } from '../constants.js';
 
 const NAV_ITEMS = [
+  { id: 'super-admin', label: 'Super Admin', Icon: Shield, superAdminOnly: true },
   { id: 'home', label: 'Home', Icon: Home },
-  { id: 'chatbot-builder', label: 'Automations', Icon: Zap },
-  { id: 'ai-agent-builder', label: 'AI Agents', Icon: Bot },
-  { id: 'template-builder', label: 'Template Builder', Icon: LayoutTemplate },
-  { id: 'media-library', label: 'Media', Icon: ImageIcon },
-  { id: 'chats', label: 'Chats', Icon: MessageCircle },
-  { id: 'contacts', label: 'Contacts', Icon: Users },
-  { id: 'pipelines', label: 'Pipelines', Icon: KanbanSquare },
-  { id: 'bulk-message', label: 'Bulk Message', Icon: Megaphone },
+  { id: 'chatbot-builder', label: 'Automations', Icon: Zap, moduleKey: 'chatbots' },
+  { id: 'ai-agent-builder', label: 'AI Agents', Icon: Bot, moduleKey: 'agents' },
+  { id: 'template-builder', label: 'Template Builder', Icon: LayoutTemplate, moduleKey: 'templates' },
+  { id: 'media-library', label: 'Media', Icon: ImageIcon, moduleKey: 'media' },
+  { id: 'chats', label: 'Chats', Icon: MessageCircle, moduleKey: 'chats' },
+  { id: 'contacts', label: 'Contacts', Icon: Users, moduleKey: 'contacts' },
+  { id: 'pipelines', label: 'Pipelines', Icon: KanbanSquare, moduleKey: 'pipelines' },
+  { id: 'bulk-message', label: 'Bulk Message', Icon: Megaphone, moduleKey: 'broadcasts' },
   { id: 'about', label: 'About Us', Icon: Info },
 ];
 
 export default function Sidebar({ activePage, onPageChange, collapsed, setCollapsed, user }) {
-  // Admins see every nav item; other roles see only the pages granted to them
-  // (user.pages from the session). Falls back to all items if pages is missing.
-  const visibleItems = (user?.role === 'admin' || !Array.isArray(user?.pages))
-    ? NAV_ITEMS
-    : NAV_ITEMS.filter(item => user.pages.includes(item.id));
+  const isSuperAdmin = user?.role === 'admin';
+  const orgModules = user?.activeOrg?.settings?.modules || null;
+
+  // Filter items:
+  // 1. Super Admin item only visible to global admin
+  // 2. Gated by tenant module switchboard if configured (unless Super Admin)
+  // 3. Gated by user role/pages
+  const visibleItems = NAV_ITEMS.filter(item => {
+    if (item.superAdminOnly) return isSuperAdmin;
+
+    // Check tenant module switchboard
+    if (!isSuperAdmin && orgModules && item.moduleKey) {
+      if (orgModules[item.moduleKey] === false) return false;
+    }
+
+    if (isSuperAdmin || !Array.isArray(user?.pages)) return true;
+    return user.pages.includes(item.id);
+  });
   return (
     <div style={{
       width: collapsed ? 68 : 224,

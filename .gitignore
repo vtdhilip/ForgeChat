@@ -76,3 +76,7 @@ transform.js
 
 # Internal ops doc — not for the public repo
 ForgeMind_CICD_Setup_Guide.pdf
+
+graphify-out/
+.venv/
+

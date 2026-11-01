@@ -17,11 +17,12 @@ import MediaLibraryPage from './pages/MediaLibraryPage.jsx';
 import AboutUsPage from './pages/AboutUsPage.jsx';
 import PipelinesPage from './pages/PipelinesPage.jsx';
 import AiAgentBuilderPage from './pages/AiAgentBuilderPage.jsx';
+import SuperAdminPage from './pages/SuperAdminPage.jsx';
 
 const VALID_PAGES = new Set([
   'home', 'chatbot-builder', 'template-builder', 'chats',
   'contacts', 'pipelines', 'bulk-message', 'admin-settings', 'media-library', 'about',
-  'ai-agent-builder',
+  'ai-agent-builder', 'super-admin',
 ]);
 
 export default function App() {
@@ -40,10 +41,24 @@ export default function App() {
     if (!routeParts[0]) replaceRoute('home');
   }, [routeParts, replaceRoute]);
 
-  // Page guard: non-admins can only reach pages granted to them (user.pages).
-  // admin-settings is allowed if they have any admin-settings:* sub-page.
+  // Page guard: non-admins cannot access super-admin and can only reach pages granted to them.
   useEffect(() => {
-    if (!user || user.role === 'admin' || !Array.isArray(user.pages)) return;
+    if (!user) return;
+    if (page === 'super-admin' && user.role !== 'admin') {
+      setPage('home');
+      return;
+    }
+    if (user.role === 'admin' || !Array.isArray(user.pages)) return;
+
+    // Check client module gate if active
+    const orgModules = user?.activeOrg?.settings?.modules;
+    if (orgModules) {
+      if (page === 'ai-agent-builder' && orgModules.agents === false) return setPage('home');
+      if (page === 'bulk-message' && orgModules.broadcasts === false) return setPage('home');
+      if (page === 'pipelines' && orgModules.pipelines === false) return setPage('home');
+      if (page === 'chatbot-builder' && orgModules.chatbots === false) return setPage('home');
+    }
+
     const allowed = page === 'admin-settings'
       ? user.pages.some(p => p.startsWith('admin-settings'))
       : user.pages.includes(page);
@@ -119,6 +134,7 @@ export default function App() {
       case 'chatbot-builder': return <ChatbotBuilderPage subParts={subParts} navigate={navigate} />;
       case 'ai-agent-builder': return <AiAgentBuilderPage user={user} navigate={navigate} />;
       case 'about': return <AboutUsPage />;
+      case 'super-admin': return <SuperAdminPage user={user} onOrgSwitch={() => api.auth.me().then(({ user }) => setUser(user))} />;
       case 'admin-settings': return <AdminSettingsPage onLogout={handleLogout} onNavigate={setPage} subParts={subParts} navigate={navigate} user={user} />;
       default: return <HomePage user={user} onPageChange={setPage} />;
     }
@@ -133,6 +149,25 @@ export default function App() {
       background: C.pageBg,
     }}>
       <Topbar user={user} onLogout={handleLogout} onNavigate={setPage} />
+      {user?.role === 'admin' && user?.activeOrg && page !== 'super-admin' && (
+        <div style={{
+          background: '#0284c7', color: '#fff', padding: '6px 20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontSize: 12, fontWeight: 500
+        }}>
+          <div>
+            Active Workspace: <strong>{user.activeOrg.name}</strong> ({user.activeOrg.slug}) — Plan: <strong>{user.activeOrg.plan?.toUpperCase()}</strong>
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <span
+              onClick={() => setPage('super-admin')}
+              style={{ cursor: 'pointer', textDecoration: 'underline', fontWeight: 600 }}
+            >
+              ⚙ Open Super Admin Switchboard
+            </span>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {page !== 'admin-settings' && (
           <Sidebar
