@@ -152,25 +152,30 @@ async def update_org_modules(org_id: str, payload: ModuleUpdateRequest, user: di
     }
 
     updates = ["settings = $1", "updated_at = NOW()"]
-    params = [updated_settings, org_id]
+    params = [updated_settings]
 
     if payload.is_active is not None:
-        params.insert(1, payload.is_active)
+        params.append(bool(payload.is_active))
         updates.append(f"is_active = ${len(params)}")
 
     if payload.plan is not None:
-        params.insert(1, payload.plan)
+        params.append(str(payload.plan))
         updates.append(f"plan = ${len(params)}")
+
+    params.append(str(org_id))
+    org_id_placeholder = f"${len(params)}"
 
     updated = await db.fetchrow(
         f"""
         UPDATE coexistence.organizations
            SET {', '.join(updates)}
-         WHERE id::text = $2
+         WHERE id::text = {org_id_placeholder}
          RETURNING *
         """,
         *params
     )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Organization not found")
 
     return {
         "success": True,
