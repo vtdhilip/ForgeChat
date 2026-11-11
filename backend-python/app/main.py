@@ -58,9 +58,20 @@ app = FastAPI(
 )
 
 # CORS configuration
+_cors_origins = ["http://localhost:8080", "http://localhost:5173", "http://127.0.0.1:8080"]
+if settings.CORS_ORIGIN:
+    for _origin in settings.CORS_ORIGIN.split(","):
+        _cleaned = _origin.strip().rstrip("/")
+        if _cleaned and _cleaned not in _cors_origins:
+            _cors_origins.append(_cleaned)
+if settings.DOMAIN:
+    _domain_origin = f"https://{settings.DOMAIN.strip().rstrip('/')}"
+    if _domain_origin not in _cors_origins:
+        _cors_origins.append(_domain_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://localhost:5173", "http://127.0.0.1:8080"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
