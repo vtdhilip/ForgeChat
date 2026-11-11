@@ -726,10 +726,21 @@ function WhatsappAccountsTab() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
-    phoneNumberId: '', wabaId: '', accessToken: '', metaAppId: '',
+    phoneNumberId: '', wabaId: '', accessToken: '', verifyToken: '', metaAppId: '',
   });
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // The callback URL to register in the Meta App Dashboard — always the live origin.
+  const webhookUrl = `${window.location.origin}/api/webhook/whatsapp`;
+  const copyWebhookUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked */ }
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -747,7 +758,7 @@ function WhatsappAccountsTab() {
 
   const startCreate = () => {
     setEditing(null);
-    setForm({ phoneNumberId: '', wabaId: '', accessToken: '', metaAppId: '' });
+    setForm({ phoneNumberId: '', wabaId: '', accessToken: '', verifyToken: '', metaAppId: '' });
     setShowToken(false);
     setShowForm(true);
   };
@@ -757,6 +768,7 @@ function WhatsappAccountsTab() {
       phoneNumberId: acc.phoneNumberId || '',
       wabaId: acc.wabaId || '',
       accessToken: '',                 // blank = keep the stored token
+      verifyToken: acc.verifyToken || '',
       metaAppId: acc.metaAppId || '',
     });
     setShowToken(false);
@@ -770,6 +782,10 @@ function WhatsappAccountsTab() {
     }
     if (!editing && !form.accessToken.trim()) {
       alert('Permanent Access Token is required');
+      return;
+    }
+    if (!form.verifyToken.trim()) {
+      alert('Webhook Verify Token is required');
       return;
     }
     setSaving(true);
@@ -797,6 +813,7 @@ function WhatsappAccountsTab() {
   const hintInline = { color: C.textMuted, fontWeight: 400, textTransform: 'none', letterSpacing: 0 };
   const hintRow = { fontSize: 11, color: C.textMuted, marginTop: 5 };
   const eyeBtnStyle = { position: 'absolute', right: 8, top: 8, background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 4 };
+  const copyBtnStyle = { flexShrink: 0, width: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--c-cardBg)', border: `1px solid ${C.border}`, borderRadius: 8, cursor: 'pointer', color: copied ? C.green : C.textSecondary };
 
   return (
     <div style={{ flex: 1, padding: 24, overflow: 'auto', fontFamily: FONT }}>
@@ -942,10 +959,33 @@ function WhatsappAccountsTab() {
                     </div>
                   </div>
                   <div>
+                    <label style={labelStyle}>Webhook Verify Token</label>
+                    <input style={inpStyle} value={form.verifyToken} onChange={e => setForm({ ...form, verifyToken: e.target.value })} placeholder="Create a custom verify token" autoComplete="off" name="wa-verify-token" />
+                    <div style={hintRow}>A custom string you create. Must match the token you set in Meta webhook settings.</div>
+                  </div>
+                  <div>
                     <label style={labelStyle}>Meta App ID <span style={hintInline}>(only required for media-header templates)</span></label>
                     <input style={{ ...inpStyle, fontFamily: MONO }} value={form.metaAppId} onChange={e => setForm({ ...form, metaAppId: e.target.value })} placeholder="e.g. 1191602295745986 (15–16 digits)" autoComplete="off" name="meta-app-id" inputMode="numeric" />
                     <div style={hintRow}>From Meta App Dashboard → App Settings → Basic → App ID. Needed for uploading image/video/document template headers.</div>
                   </div>
+                </div>
+              </div>
+
+              {/* Webhook Configuration */}
+              <div>
+                <h4 style={sectionTitleStyle}>Webhook Configuration</h4>
+                <p style={sectionSubStyle}>Use this URL as your webhook callback in the Meta App Dashboard.</p>
+                <label style={labelStyle}>Webhook Callback URL</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    readOnly
+                    value={webhookUrl}
+                    onFocus={e => e.target.select()}
+                    style={{ ...inpStyle, fontFamily: MONO, fontSize: 12, background: 'var(--c-hover)', color: C.textSecondary }}
+                  />
+                  <button type="button" onClick={copyWebhookUrl} title={copied ? 'Copied!' : 'Copy URL'} style={copyBtnStyle}>
+                    {copied ? <Check size={15} /> : <Copy size={15} />}
+                  </button>
                 </div>
               </div>
             </div>
