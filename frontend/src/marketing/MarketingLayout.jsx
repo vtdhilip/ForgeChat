@@ -6,6 +6,7 @@ import FeaturesPage from './pages/FeaturesPage.jsx';
 import SolutionsPage from './pages/SolutionsPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
 import AboutContactPage from './pages/AboutContactPage.jsx';
+import LegalPage from './pages/LegalPage.jsx';
 import DemoBookingModal from './components/DemoBookingModal.jsx';
 import { C, FONT } from '../constants.js';
 
@@ -23,6 +24,10 @@ export default function MarketingLayout({ activeRoute, onNavigate, user }) {
       case 'about':
       case 'contact':
         return <AboutContactPage onNavigate={onNavigate} onOpenDemo={() => setDemoModalOpen(true)} />;
+      case 'privacy-policy':
+      case 'terms':
+      case 'data-deletion':
+        return <LegalPage page={activeRoute} onNavigate={onNavigate} />;
       case 'landing':
       default:
         return <LandingPage onNavigate={onNavigate} onOpenDemo={() => setDemoModalOpen(true)} />;

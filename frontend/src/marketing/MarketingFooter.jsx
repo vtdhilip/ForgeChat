@@ -137,6 +137,17 @@ export default function MarketingFooter({ onNavigate, onOpenDemo }) {
           <div>
             © {new Date().getFullYear()} Synaptic Info. All rights reserved.
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => onNavigate('privacy-policy')} style={{ ...linkBtnStyle, fontSize: 12, color: '#71717A' }}>
+              Privacy Policy
+            </button>
+            <button type="button" onClick={() => onNavigate('terms')} style={{ ...linkBtnStyle, fontSize: 12, color: '#71717A' }}>
+              Terms of Service
+            </button>
+            <button type="button" onClick={() => onNavigate('data-deletion')} style={{ ...linkBtnStyle, fontSize: 12, color: '#71717A' }}>
+              Data Deletion
+            </button>
+          </div>
         </div>
       </div>
     </footer>

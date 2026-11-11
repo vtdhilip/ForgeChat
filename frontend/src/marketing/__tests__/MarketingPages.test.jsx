@@ -185,4 +185,35 @@ describe('Synaptic Chat Marketing Pages Suite', () => {
     expect(window.location.hash).toBe('#/home');
     expect(result.current[0]).toEqual(['home']);
   });
+
+  it('renders privacy policy, terms, and data deletion pages on clean URLs', () => {
+    window.history.replaceState(null, '', '/');
+    const { result } = renderHook(() => useHashRoute());
+
+    for (const legalRoute of ['privacy-policy', 'terms', 'data-deletion']) {
+      act(() => {
+        result.current[1](legalRoute);
+      });
+      expect(window.location.pathname).toBe(`/${legalRoute}`);
+      expect(window.location.hash).toBe('');
+    }
+
+    const onNavigate = vi.fn();
+    const { rerender } = render(
+      <MarketingLayout activeRoute="privacy-policy" onNavigate={onNavigate} user={null} />,
+    );
+    expect(screen.getByRole('heading', { name: /Privacy Policy/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/WhatsApp Cloud API/i).length).toBeGreaterThan(0);
+
+    rerender(<MarketingLayout activeRoute="terms" onNavigate={onNavigate} user={null} />);
+    expect(screen.getByRole('heading', { name: /Terms of Service/i })).toBeInTheDocument();
+
+    rerender(<MarketingLayout activeRoute="data-deletion" onNavigate={onNavigate} user={null} />);
+    expect(screen.getByRole('heading', { name: /User Data Deletion Instructions/i })).toBeInTheDocument();
+
+    const privacyButtons = screen.getAllByRole('button', { name: 'Privacy Policy' });
+    expect(privacyButtons.length).toBeGreaterThanOrEqual(2);
+    fireEvent.click(privacyButtons[0]);
+    expect(onNavigate).toHaveBeenCalledWith('privacy-policy');
+  });
 });

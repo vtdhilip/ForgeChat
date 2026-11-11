@@ -22,6 +22,7 @@ const MarketingLayout = lazy(() => import('./marketing/MarketingLayout.jsx'));
 
 const PUBLIC_PAGES = new Set([
   'landing', 'features', 'solutions', 'pricing', 'about', 'contact',
+  'privacy-policy', 'terms', 'data-deletion',
 ]);
 
 const APP_PAGES = new Set([

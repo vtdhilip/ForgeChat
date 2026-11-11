@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 const CLEAN_PATH_ROUTES = new Set([
   'landing', 'features', 'solutions', 'pricing', 'about', 'contact', 'login',
+  'privacy-policy', 'terms', 'data-deletion',
 ]);
 
 function parseRoute() {
