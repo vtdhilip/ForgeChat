@@ -726,9 +726,10 @@ function WhatsappAccountsTab() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({
-    phoneNumberId: '', wabaId: '', accessToken: '', verifyToken: '', metaAppId: '',
+    phoneNumberId: '', wabaId: '', accessToken: '', verifyToken: '', metaAppId: '', metaAppSecret: '',
   });
   const [showToken, setShowToken] = useState(false);
+  const [showAppSecret, setShowAppSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -758,8 +759,9 @@ function WhatsappAccountsTab() {
 
   const startCreate = () => {
     setEditing(null);
-    setForm({ phoneNumberId: '', wabaId: '', accessToken: '', verifyToken: '', metaAppId: '' });
+    setForm({ phoneNumberId: '', wabaId: '', accessToken: '', verifyToken: '', metaAppId: '', metaAppSecret: '' });
     setShowToken(false);
+    setShowAppSecret(false);
     setShowForm(true);
   };
   const startEdit = (acc) => {
@@ -770,8 +772,10 @@ function WhatsappAccountsTab() {
       accessToken: '',                 // blank = keep the stored token
       verifyToken: acc.verifyToken || '',
       metaAppId: acc.metaAppId || '',
+      metaAppSecret: '',               // blank = keep the stored app secret
     });
     setShowToken(false);
+    setShowAppSecret(false);
     setShowForm(true);
   };
 
@@ -790,12 +794,13 @@ function WhatsappAccountsTab() {
     }
     setSaving(true);
     try {
+      const payload = { ...form };
+      if (!payload.metaAppSecret) delete payload.metaAppSecret;
       if (editing) {
-        const payload = { ...form };
         if (!payload.accessToken) delete payload.accessToken;
         await api.whatsappAccounts.update(editing.id, payload);
       } else {
-        await api.whatsappAccounts.create(form);
+        await api.whatsappAccounts.create(payload);
       }
       setShowForm(false);
       await refresh();
@@ -967,6 +972,29 @@ function WhatsappAccountsTab() {
                     <label style={labelStyle}>Meta App ID <span style={hintInline}>(only required for media-header templates)</span></label>
                     <input style={{ ...inpStyle, fontFamily: MONO }} value={form.metaAppId} onChange={e => setForm({ ...form, metaAppId: e.target.value })} placeholder="e.g. 1191602295745986 (15–16 digits)" autoComplete="off" name="meta-app-id" inputMode="numeric" />
                     <div style={hintRow}>From Meta App Dashboard → App Settings → Basic → App ID. Needed for uploading image/video/document template headers.</div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>
+                      Meta App Secret{' '}
+                      <span style={hintInline}>
+                        {editing?.hasMetaAppSecret ? '(leave blank to keep existing)' : '(required if using a separate Meta App)'}
+                      </span>
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        style={{ ...inpStyle, paddingRight: 38, fontFamily: MONO, fontSize: 12 }}
+                        type={showAppSecret ? 'text' : 'password'}
+                        value={form.metaAppSecret}
+                        onChange={e => setForm({ ...form, metaAppSecret: e.target.value })}
+                        placeholder={editing?.hasMetaAppSecret ? (editing.metaAppSecretMasked || '••••••••') : 'Enter Meta App Secret'}
+                        autoComplete="new-password"
+                        name="meta-app-secret"
+                      />
+                      <button type="button" onClick={() => setShowAppSecret(s => !s)} style={eyeBtnStyle}>
+                        {showAppSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                    <div style={hintRow}>From Meta App Dashboard → App Settings → Basic → App Secret. Used to verify incoming webhook signatures (AES-256-GCM encrypted).</div>
                   </div>
                 </div>
               </div>

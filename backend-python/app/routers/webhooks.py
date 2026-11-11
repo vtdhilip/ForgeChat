@@ -46,29 +46,104 @@ async def verify_webhook(
 
     raise HTTPException(status_code=403, detail="Verification failed")
 
-def verify_meta_signature(raw_body: bytes, signature_header: Optional[str]) -> Optional[bool]:
-    secret = settings.META_APP_SECRET
-    if not secret:
+def extract_webhook_phone_number_ids(body: Any) -> List[str]:
+    """Collect unique metadata.phone_number_id values from a Meta webhook payload."""
+    if not isinstance(body, dict):
+        return []
+    seen: list[str] = []
+    for entry in body.get("entry") or []:
+        if not isinstance(entry, dict):
+            continue
+        for change in entry.get("changes") or []:
+            if not isinstance(change, dict):
+                continue
+            value = change.get("value") or {}
+            metadata = value.get("metadata") if isinstance(value, dict) else None
+            pid = metadata.get("phone_number_id") if isinstance(metadata, dict) else None
+            if pid:
+                pid_str = str(pid).strip()
+                if pid_str and pid_str not in seen:
+                    seen.append(pid_str)
+    return seen
+
+
+def _configured_global_meta_secrets() -> List[str]:
+    """Return global Meta App Secrets from env/settings (supports comma-separated lists)."""
+    raw_sources = [
+        getattr(settings, "META_APP_SECRET", "") or "",
+        getattr(settings, "META_APP_SECRETS", "") or "",
+        os.getenv("META_APP_SECRETS", "") or "",
+    ]
+    secrets: list[str] = []
+    for src in raw_sources:
+        for item in str(src).split(","):
+            s = item.strip()
+            if s and s not in secrets:
+                secrets.append(s)
+    return secrets
+
+
+async def resolve_webhook_secrets(body: Any) -> List[str]:
+    """Resolve per-account Meta App Secrets by phone_number_id, falling back to global secrets."""
+    phone_number_ids = extract_webhook_phone_number_ids(body)
+    if phone_number_ids:
+        rows = await db.fetch(
+            """
+            SELECT meta_app_secret_encrypted
+            FROM coexistence.whatsapp_accounts
+            WHERE is_active = TRUE
+              AND phone_number_id = ANY($1::text[])
+              AND meta_app_secret_encrypted IS NOT NULL
+            """,
+            phone_number_ids,
+        )
+        per_account: list[str] = []
+        for row in rows:
+            dec = decrypt(row.get("meta_app_secret_encrypted"))
+            if dec and dec not in per_account:
+                per_account.append(dec)
+        if per_account:
+            return per_account
+    return _configured_global_meta_secrets()
+
+
+def verify_meta_signature(
+    raw_body: bytes,
+    signature_header: Optional[str],
+    secrets: Optional[List[str]] = None,
+) -> Optional[bool]:
+    candidate_secrets = _configured_global_meta_secrets() if secrets is None else [s for s in secrets if s]
+    if not candidate_secrets:
         return None
     if not signature_header or not signature_header.startswith("sha256=") or not raw_body:
         return False
-    expected = "sha256=" + hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature_header)
+    for secret in candidate_secrets:
+        expected = "sha256=" + hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expected, signature_header):
+            return True
+    return False
+
 
 @router.post("/webhook")
 @router.post("/webhook/whatsapp")
 async def process_whatsapp_webhook(request: Request):
     raw_body = await request.body()
     sig_header = request.headers.get("x-hub-signature-256") or request.headers.get("X-Hub-Signature-256")
-    sig = verify_meta_signature(raw_body, sig_header)
+    valid_json = True
+    try:
+        body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+    except Exception:
+        body = {}
+        valid_json = False
+
+    secrets = await resolve_webhook_secrets(body)
+    sig = verify_meta_signature(raw_body, sig_header, secrets=secrets)
     if sig is False:
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
     if sig is None:
         pass  # In dev without META_APP_SECRET configured, accept but log in production
 
-    try:
-        body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
-    except Exception:
+    if not valid_json:
         return {"ok": True, "stored": 0}
 
     if not body or body.get("object") != "whatsapp_business_account":

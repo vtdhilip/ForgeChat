@@ -36,6 +36,7 @@ def public_shape(row: dict, include_secrets: bool = False) -> Optional[dict]:
         "phoneNumberId": row.get("phone_number_id"),
         "wabaId": row.get("waba_id"),
         "metaAppId": row.get("meta_app_id"),
+        "hasMetaAppSecret": bool(row.get("meta_app_secret_encrypted")),
         "isDefault": row.get("is_default"),
         "isActive": row.get("is_active"),
         "healthStatus": row.get("health_status") or "unknown",
@@ -49,6 +50,9 @@ def public_shape(row: dict, include_secrets: bool = False) -> Optional[dict]:
         dec_token = decrypt(row.get("access_token_encrypted"))
         out["accessTokenMasked"] = mask_secret(dec_token) if dec_token else ""
         out["verifyToken"] = decrypt(row.get("verify_token_encrypted")) or ""
+        dec_app_secret = decrypt(row.get("meta_app_secret_encrypted"))
+        out["metaAppSecretMasked"] = mask_secret(dec_app_secret) if dec_app_secret else ""
+        out["hasMetaAppSecret"] = bool(dec_app_secret or row.get("meta_app_secret_encrypted"))
     return out
 
 class WhatsAppAccountCreate(BaseModel):
@@ -57,6 +61,7 @@ class WhatsAppAccountCreate(BaseModel):
     accessToken: str
     verifyToken: Optional[str] = None
     metaAppId: Optional[str] = None
+    metaAppSecret: Optional[str] = None
 
 class WhatsAppAccountUpdate(BaseModel):
     phoneNumberId: Optional[str] = None
@@ -64,6 +69,7 @@ class WhatsAppAccountUpdate(BaseModel):
     accessToken: Optional[str] = None
     verifyToken: Optional[str] = None
     metaAppId: Optional[str] = None
+    metaAppSecret: Optional[str] = None
     isActive: Optional[bool] = None
 
 @router.get("")
@@ -152,19 +158,21 @@ async def create_account(
 
     enc_token = encrypt(access_token)
     enc_verify = encrypt((payload.verifyToken or "").strip())
+    app_secret = (payload.metaAppSecret or "").strip()
+    enc_app_secret = encrypt(app_secret) if app_secret else None
 
     try:
         row = await db.fetchrow(
             """
             INSERT INTO coexistence.whatsapp_accounts
               (display_name, display_phone_number, phone_number_id, waba_id, meta_app_id,
-               access_token_encrypted, verify_token_encrypted, is_default, is_active, org_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, TRUE, $8)
+               access_token_encrypted, verify_token_encrypted, meta_app_secret_encrypted, is_default, is_active, org_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, TRUE, $9)
             RETURNING *
             """,
             display_name, display_phone_number, phone_number_id, waba_id,
             payload.metaAppId.strip() if payload.metaAppId else None,
-            enc_token, enc_verify, org_id
+            enc_token, enc_verify, enc_app_secret, org_id
         )
     except Exception as err:
         detail = _unique_violation_detail(err)
@@ -238,6 +246,10 @@ async def update_account(
     if payload.verifyToken is not None:
         params.append(encrypt(payload.verifyToken.strip()))
         sets.append(f"verify_token_encrypted = ${len(params)}")
+
+    if payload.metaAppSecret is not None and payload.metaAppSecret.strip():
+        params.append(encrypt(payload.metaAppSecret.strip()))
+        sets.append(f"meta_app_secret_encrypted = ${len(params)}")
 
     if payload.isActive is not None:
         params.append(payload.isActive)

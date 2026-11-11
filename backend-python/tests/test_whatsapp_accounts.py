@@ -1,3 +1,5 @@
+import hmac
+import hashlib
 import unittest
 from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
@@ -8,6 +10,7 @@ from app.routers.whatsapp_accounts import (
     create_account,
     update_account,
 )
+from app.routers.webhooks import extract_webhook_phone_number_ids, verify_meta_signature
 
 
 class FakeUniqueViolation(Exception):
@@ -102,6 +105,53 @@ class TestWhatsAppAccountsUniqueHandling(unittest.IsolatedAsyncioTestCase):
             ctx.exception.detail,
             "Only one WhatsApp Business account is allowed per organization. Edit the existing account instead.",
         )
+
+    async def test_create_encrypts_meta_app_secret_and_masks_response(self):
+        payload = WhatsAppAccountCreate(
+            phoneNumberId="1415669018300896",
+            wabaId="1788645499257948",
+            accessToken="tok_abc",
+            metaAppId="1855284395482565",
+            metaAppSecret="app_secret_9999",
+        )
+        tenant_ctx = {"org_id": "381bc6a0-f5d2-4e30-b341-6a361a627a99", "user": {"role": "admin"}}
+        inserted_row = {
+            "id": 10,
+            "display_name": "Next Click Global",
+            "display_phone_number": "919979745575",
+            "phone_number_id": "1415669018300896",
+            "waba_id": "1788645499257948",
+            "meta_app_id": "1855284395482565",
+            "access_token_encrypted": "enc:tok_abc",
+            "verify_token_encrypted": None,
+            "meta_app_secret_encrypted": "enc:app_secret_9999",
+            "is_default": True,
+            "is_active": True,
+        }
+
+        with (
+            patch("app.routers.whatsapp_accounts.db.fetchval", new=AsyncMock(return_value=0)),
+            patch("app.routers.whatsapp_accounts.fetch_phone_meta", new=AsyncMock(return_value={"verified_name": "Next Click Global", "display_phone_number": "+91 99797 45575"})),
+            patch("app.routers.whatsapp_accounts.encrypt", side_effect=lambda v: f"enc:{v}" if v else None),
+            patch("app.routers.whatsapp_accounts.decrypt", side_effect=lambda v: v.removeprefix("enc:") if v else None),
+            patch("app.routers.whatsapp_accounts.db.fetchrow", new=AsyncMock(return_value=inserted_row)) as mock_fetchrow,
+        ):
+            res = await create_account(payload=payload, tenant_ctx=tenant_ctx, admin={"role": "admin"})
+
+        self.assertTrue(res["hasMetaAppSecret"])
+        self.assertNotIn("metaAppSecret", res)
+        self.assertIn("enc:app_secret_9999", mock_fetchrow.call_args.args)
+
+    def test_verify_meta_signature_with_per_account_secret(self):
+        raw = b'{"entry":[{"changes":[{"value":{"metadata":{"phone_number_id":"1415669018300896"}}}]}]}'
+        sig = "sha256=" + hmac.new(b"client_secret_123", raw, hashlib.sha256).hexdigest()
+
+        self.assertEqual(
+            extract_webhook_phone_number_ids({"entry": [{"changes": [{"value": {"metadata": {"phone_number_id": "1415669018300896"}}}]}]}),
+            ["1415669018300896"],
+        )
+        self.assertTrue(verify_meta_signature(raw, sig, secrets=["client_secret_123"]))
+        self.assertFalse(verify_meta_signature(raw, sig, secrets=["other_app_secret"]))
 
 
 if __name__ == "__main__":
