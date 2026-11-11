@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from app.core.database import db
-from app.middleware.auth import get_current_user, is_admin_user
+from app.middleware.auth import get_current_user, is_tenant_admin
+from app.middleware.tenant import get_tenant_context
 from app.services.whatsapp_service import normalize_phone
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
@@ -11,10 +12,16 @@ router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 RANGE_DAYS = {"7d": 7, "30d": 30, "90d": 90}
 LEAD_SOURCE_CATEGORY = os.getenv("LEAD_SOURCE_CATEGORY", "Lead Source")
 
-async def get_connected_wa() -> Optional[str]:
-    row = await db.fetchrow(
-        "SELECT display_phone_number AS wa FROM coexistence.whatsapp_accounts ORDER BY is_default DESC, id ASC LIMIT 1"
-    )
+async def get_connected_wa(org_id: Optional[str] = None) -> Optional[str]:
+    if org_id:
+        row = await db.fetchrow(
+            "SELECT display_phone_number AS wa FROM coexistence.whatsapp_accounts WHERE org_id = $1::uuid AND is_active = true ORDER BY is_default DESC, id ASC LIMIT 1",
+            org_id
+        )
+    else:
+        row = await db.fetchrow(
+            "SELECT display_phone_number AS wa FROM coexistence.whatsapp_accounts WHERE is_active = true ORDER BY is_default DESC, id ASC LIMIT 1"
+        )
     if not row or not row.get("wa"):
         return None
     return normalize_phone(row["wa"])
@@ -48,13 +55,14 @@ def pct(cur: int, prev: int) -> Optional[int]:
 async def get_dashboard(
     range: Optional[str] = "7d",
     funnelCategory: Optional[str] = None,
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
-    admin = is_admin_user(user)
+    user = tenant_ctx["user"]
+    admin = is_tenant_admin(user, tenant_ctx)
     uid = user["id"]
     r_key = range if range in RANGE_DAYS else "7d"
     days = RANGE_DAYS[r_key]
-    connected_wa = await get_connected_wa()
+    connected_wa = await get_connected_wa(tenant_ctx["org_id"])
 
     async def q(sql: str, params: list, kind: str):
         query_sql, query_params = apply_scope(sql, params, admin, uid, kind, connected_wa)

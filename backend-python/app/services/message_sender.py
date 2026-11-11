@@ -66,8 +66,8 @@ async def insert_pending_row(
         INSERT INTO coexistence.chat_history
           (message_id, phone_number_id, wa_number, contact_number, to_number,
            direction, message_type, message_body, raw_payload,
-           media_url, media_mime_type, status, timestamp, template_meta, context_message_id)
-        VALUES ($1, $2, $3, $4, $5, 'outgoing', $6, $7, $8, $9, $10, 'sending', NOW(), $11, $12)
+           media_url, media_mime_type, status, timestamp, template_meta, context_message_id, org_id)
+        VALUES ($1, $2, $3, $4, $5, 'outgoing', $6, $7, $8, $9, $10, 'sending', NOW(), $11, $12, $13)
         """,
         msg_id,
         account["phoneNumberId"],
@@ -80,7 +80,8 @@ async def insert_pending_row(
         media_url,
         media_mime,
         t_meta,
-        context_message_id
+        context_message_id,
+        account.get("orgId")
     )
     return msg_id
 

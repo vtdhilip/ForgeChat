@@ -201,20 +201,22 @@ export default function App() {
     );
   }
 
+  const orgKey = user?.activeOrg?.id || 'default';
+
   const renderPage = () => {
     switch (page) {
-      case 'home': return <HomePage user={user} onPageChange={setPage} />;
-      case 'chats': return <ChatsPage subParts={subParts} navigate={navigate} user={user} />;
-      case 'contacts': return <ContactsPage user={user} onNavigate={navigate} />;
-      case 'pipelines': return <PipelinesPage user={user} />;
-      case 'template-builder': return <TemplateBuilderPage subParts={subParts} navigate={navigate} />;
-      case 'media-library': return <MediaLibraryPage />;
-      case 'bulk-message': return <BulkMessagePage onNavigate={navigate} />;
-      case 'chatbot-builder': return <ChatbotBuilderPage subParts={subParts} navigate={navigate} />;
-      case 'ai-agent-builder': return <AiAgentBuilderPage user={user} navigate={navigate} />;
+      case 'home': return <HomePage key={orgKey} user={user} onPageChange={setPage} />;
+      case 'chats': return <ChatsPage key={orgKey} subParts={subParts} navigate={navigate} user={user} />;
+      case 'contacts': return <ContactsPage key={orgKey} user={user} onNavigate={navigate} />;
+      case 'pipelines': return <PipelinesPage key={orgKey} user={user} />;
+      case 'template-builder': return <TemplateBuilderPage key={orgKey} subParts={subParts} navigate={navigate} />;
+      case 'media-library': return <MediaLibraryPage key={orgKey} />;
+      case 'bulk-message': return <BulkMessagePage key={orgKey} onNavigate={navigate} />;
+      case 'chatbot-builder': return <ChatbotBuilderPage key={orgKey} subParts={subParts} navigate={navigate} />;
+      case 'ai-agent-builder': return <AiAgentBuilderPage key={orgKey} user={user} navigate={navigate} />;
       case 'super-admin': return <SuperAdminPage user={user} onOrgSwitch={() => api.auth.me().then(({ user }) => setUser(user))} />;
-      case 'admin-settings': return <AdminSettingsPage onLogout={handleLogout} onNavigate={setPage} subParts={subParts} navigate={navigate} user={user} />;
-      default: return <HomePage user={user} onPageChange={setPage} />;
+      case 'admin-settings': return <AdminSettingsPage key={orgKey} onLogout={handleLogout} onNavigate={setPage} subParts={subParts} navigate={navigate} user={user} />;
+      default: return <HomePage key={orgKey} user={user} onPageChange={setPage} />;
     }
   };
 
@@ -226,7 +228,7 @@ export default function App() {
       fontFamily: FONT,
       background: C.pageBg,
     }}>
-      <Topbar user={user} onLogout={handleLogout} onNavigate={setPage} />
+      <Topbar key={orgKey} user={user} onLogout={handleLogout} onNavigate={setPage} />
       {user?.role === 'admin' && user?.activeOrg && page !== 'super-admin' && (
         <div style={{
           background: '#0284c7', color: '#fff', padding: '6px 20px',

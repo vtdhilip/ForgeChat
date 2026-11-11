@@ -225,7 +225,7 @@ async def run_agent(agent_id: int, contact_number: str, inbound_message_id: Opti
 
         # Dispatch final reply text to customer via WhatsApp
         if reply_text.strip():
-            account = await resolve_account(account_id=agent.get("wa_account_id"))
+            account, _ = await resolve_account(account_id=agent.get("wa_account_id"))
             if account:
                 local_id = await insert_pending_row(
                     account=account,
@@ -235,10 +235,11 @@ async def run_agent(agent_id: int, contact_number: str, inbound_message_id: Opti
                 )
                 asyncio.create_task(
                     dispatch_send_task(
+                        kind="text",
                         account=account,
-                        to_number=contact_number,
-                        message_payload={"type": "text", "text": {"body": reply_text.strip()}},
-                        local_id=local_id,
+                        to=contact_number,
+                        local_message_id=local_id,
+                        payload={"body": reply_text.strip()},
                     )
                 )
 

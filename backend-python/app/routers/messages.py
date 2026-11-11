@@ -15,6 +15,7 @@ from app.core.database import db
 from app.middleware.auth import (
     get_current_user,
     is_admin_user,
+    is_tenant_admin,
     assert_wa_access,
     assert_contact_access
 )
@@ -103,33 +104,38 @@ class StarMessageRequest(BaseModel):
 # --- Endpoints ---
 
 @router.get("/numbers")
-async def get_numbers(user: dict = Depends(get_current_user)):
-    is_admin = is_admin_user(user)
-    params = []
+async def get_numbers(tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
+    org_id = tenant_ctx["org_id"]
+    is_admin = is_tenant_admin(user, tenant_ctx)
+    params: List[Any] = [org_id]
     extra_filter = ""
     if not is_admin:
         params.append(user["id"])
-        extra_filter = f"AND wa_number IN (SELECT DISTINCT wa_number FROM coexistence.contacts WHERE assigned_user_id = ${len(params)})"
+        extra_filter = f"AND regexp_replace(wa.display_phone_number, '[^0-9]', '', 'g') IN (SELECT DISTINCT wa_number FROM coexistence.contacts WHERE assigned_user_id = ${len(params)})"
 
     query = f"""
       SELECT
-        wa_number,
-        MAX(timestamp) AS last_message_time,
-        COUNT(*) AS message_count
-      FROM coexistence.chat_history
-      WHERE timestamp >= NOW() - {DEFAULT_DATA_WINDOW} {extra_filter}
-        AND regexp_replace(wa_number, '[^0-9]', '', 'g') IN (
-          SELECT regexp_replace(display_phone_number, '[^0-9]', '', 'g')
-          FROM coexistence.whatsapp_accounts
-          WHERE display_phone_number IS NOT NULL
-        )
-      GROUP BY wa_number
-      ORDER BY last_message_time DESC
+        regexp_replace(wa.display_phone_number, '[^0-9]', '', 'g') AS wa_number,
+        wa.display_name AS account_name,
+        MAX(ch.timestamp) AS last_message_time,
+        COUNT(ch.id)::int AS message_count
+      FROM coexistence.whatsapp_accounts wa
+      LEFT JOIN coexistence.chat_history ch
+        ON ch.wa_number = regexp_replace(wa.display_phone_number, '[^0-9]', '', 'g')
+       AND ch.timestamp >= NOW() - {DEFAULT_DATA_WINDOW}
+       AND (ch.org_id IS NULL OR ch.org_id = $1::uuid)
+      WHERE wa.org_id = $1::uuid
+        AND wa.is_active = true
+        AND wa.display_phone_number IS NOT NULL
+        {extra_filter}
+      GROUP BY regexp_replace(wa.display_phone_number, '[^0-9]', '', 'g'), wa.display_name
+      ORDER BY last_message_time DESC NULLS LAST, wa_number ASC
     """
     rows = await db.fetch(query, *params)
 
     # Unread chats
-    unread_params = []
+    unread_params: List[Any] = [org_id]
     unread_join = ""
     unread_assign = ""
     if not is_admin:
@@ -144,6 +150,7 @@ async def get_numbers(user: dict = Depends(get_current_user)):
         ON cr.wa_number = ch.wa_number AND cr.contact_number = ch.contact_number
       {unread_join}
       WHERE ch.direction = 'incoming'
+        AND (ch.org_id IS NULL OR ch.org_id = $1::uuid)
         AND ch.timestamp >= NOW() - {DEFAULT_DATA_WINDOW}
         AND ch.timestamp > COALESCE(cr.last_read_at, 'epoch'::timestamptz)
         {unread_assign}
@@ -189,7 +196,7 @@ async def get_numbers(user: dict = Depends(get_current_user)):
             "wa_number": r["wa_number"],
             "last_message_time": r["last_message_time"].isoformat() if r["last_message_time"] else None,
             "message_count": int(r["message_count"]),
-            "display_name": (tm.get("name") if tm else None) or name_map.get(r["wa_number"]),
+            "display_name": (tm.get("name") if tm else None) or name_map.get(r["wa_number"]) or r.get("account_name"),
             "profile_picture_url": tm.get("profile_picture_url") if tm else None,
             "unread_chats": unread_map.get(r["wa_number"], 0)
         })
@@ -199,16 +206,17 @@ async def get_numbers(user: dict = Depends(get_current_user)):
 async def get_contacts(
     waNumber: str = Query(...),
     timeRange: Optional[str] = "24h",
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
-    await assert_wa_access(user, waNumber)
+    user = tenant_ctx["user"]
+    await assert_wa_access(user, waNumber, tenant_ctx)
     interval = time_range_to_interval(timeRange)
     time_filter = f"AND timestamp >= NOW() - {interval}" if interval else f"AND timestamp >= NOW() - {DEFAULT_DATA_WINDOW}"
 
     params = [waNumber]
     join_kind = "LEFT JOIN"
     assign_filter = ""
-    if not is_admin_user(user):
+    if not is_tenant_admin(user, tenant_ctx):
         join_kind = "INNER JOIN"
         params.append(user["id"])
         assign_filter = f"AND c.assigned_user_id = ${len(params)}"
@@ -279,7 +287,8 @@ async def get_contacts(
     return out
 
 @router.post("/contacts/save")
-async def save_contact(payload: ContactSaveRequest, user: dict = Depends(get_current_user)):
+async def save_contact(payload: ContactSaveRequest, tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
     wa_number = payload.waNumber.strip()
     contact_number = payload.contactNumber.strip()
     if not wa_number or not contact_number:
@@ -288,9 +297,10 @@ async def save_contact(payload: ContactSaveRequest, user: dict = Depends(get_cur
     if payload.name and len(payload.name) > 255:
         raise HTTPException(status_code=400, detail="Name too long (max 255 characters)")
 
-    is_admin = is_admin_user(user)
+    await assert_wa_access(user, wa_number, tenant_ctx)
+    is_admin = is_tenant_admin(user, tenant_ctx)
     if not is_admin:
-        await assert_contact_access(user, wa_number, contact_number)
+        await assert_contact_access(user, wa_number, contact_number, tenant_ctx)
 
     clean_name = payload.name.strip() if payload.name and payload.name.strip() else None
     tags_json = json.dumps(payload.tags or [])
@@ -339,15 +349,15 @@ async def get_import_template():
 async def import_contacts(
     waNumber: str = Form(...),
     file: UploadFile = File(...),
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
+    user = tenant_ctx["user"]
     clean_wa = normalize_phone(waNumber)
     if not clean_wa:
         raise HTTPException(status_code=400, detail="waNumber required")
 
-    is_admin = is_admin_user(user)
-    if not is_admin:
-        await assert_wa_access(user, clean_wa)
+    await assert_wa_access(user, clean_wa, tenant_ctx)
+    is_admin = is_tenant_admin(user, tenant_ctx)
 
     contents = await file.read()
     if not contents:
@@ -444,7 +454,8 @@ async def import_contacts(
     return {"ok": True, "imported": imported, "updated": updated, "skipped": skipped, "total": len(rows)}
 
 @router.post("/contacts/change-number")
-async def change_number(payload: ChangeNumberRequest, user: dict = Depends(get_current_user)):
+async def change_number(payload: ChangeNumberRequest, tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
     wa_number = normalize_phone(payload.waNumber)
     old_number = normalize_phone(payload.oldNumber)
     new_number = normalize_phone(payload.newNumber)
@@ -454,7 +465,7 @@ async def change_number(payload: ChangeNumberRequest, user: dict = Depends(get_c
     if len(new_number) < 7:
         raise HTTPException(status_code=400, detail="Enter a valid phone number (digits only, at least 7 digits)")
 
-    await assert_contact_access(user, wa_number, old_number)
+    await assert_contact_access(user, wa_number, old_number, tenant_ctx)
 
     if new_number == old_number:
         return {"ok": True, "contactNumber": new_number, "unchanged": True}
@@ -488,9 +499,9 @@ async def change_number(payload: ChangeNumberRequest, user: dict = Depends(get_c
 async def delete_contact(
     waNumber: str = Query(...),
     contactNumber: str = Query(...),
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
-    await assert_contact_access(user, waNumber, contactNumber)
+    await assert_contact_access(tenant_ctx["user"], waNumber, contactNumber, tenant_ctx)
     result = await db.execute(
         "DELETE FROM coexistence.contacts WHERE wa_number = $1 AND contact_number = $2",
         waNumber, contactNumber
@@ -498,11 +509,12 @@ async def delete_contact(
     return {"ok": True}
 
 @router.get("/saved-contacts")
-async def get_saved_contacts(waNumber: str = Query(...), user: dict = Depends(get_current_user)):
-    await assert_wa_access(user, waNumber)
+async def get_saved_contacts(waNumber: str = Query(...), tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
+    await assert_wa_access(user, waNumber, tenant_ctx)
     params = [waNumber]
     assign_filter = ""
-    if not is_admin_user(user):
+    if not is_tenant_admin(user, tenant_ctx):
         params.append(user["id"])
         assign_filter = f"AND c.assigned_user_id = ${len(params)}"
 
@@ -540,9 +552,9 @@ async def get_saved_contacts(waNumber: str = Query(...), user: dict = Depends(ge
 async def get_single_contact(
     waNumber: str = Query(...),
     contactNumber: str = Query(...),
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
-    await assert_contact_access(user, waNumber, contactNumber)
+    await assert_contact_access(tenant_ctx["user"], waNumber, contactNumber, tenant_ctx)
     row = await db.fetchrow(
         """
         SELECT c.contact_number, COALESCE(c.name, c.profile_name) AS name, c.tags, c.custom_fields, c.created_at, c.updated_at,
@@ -574,8 +586,8 @@ async def get_single_contact(
     return d
 
 @router.post("/messages/mark-read")
-async def mark_read(payload: MarkReadRequest, user: dict = Depends(get_current_user)):
-    await assert_contact_access(user, payload.waNumber, payload.contactNumber)
+async def mark_read(payload: MarkReadRequest, tenant_ctx: dict = Depends(get_tenant_context)):
+    await assert_contact_access(tenant_ctx["user"], payload.waNumber, payload.contactNumber, tenant_ctx)
     await db.execute(
         """
         INSERT INTO coexistence.conversation_reads (wa_number, contact_number, last_read_at)
@@ -595,9 +607,9 @@ async def get_messages(
     limit: int = Query(50),
     search: Optional[str] = "",
     direction: Optional[str] = "all",
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
-    await assert_contact_access(user, waNumber, contactNumber)
+    await assert_contact_access(tenant_ctx["user"], waNumber, contactNumber, tenant_ctx)
     page_num = max(1, page)
     limit_num = min(200, max(1, limit))
     offset = (page_num - 1) * limit_num
@@ -667,11 +679,12 @@ async def get_messages(
     }
 
 @router.get("/contact-names")
-async def get_contact_names(waNumber: str = Query(...), user: dict = Depends(get_current_user)):
-    await assert_wa_access(user, waNumber)
+async def get_contact_names(waNumber: str = Query(...), tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
+    await assert_wa_access(user, waNumber, tenant_ctx)
     params = [waNumber]
     assign_filter = ""
-    if not is_admin_user(user):
+    if not is_tenant_admin(user, tenant_ctx):
         params.append(user["id"])
         assign_filter = f"AND assigned_user_id = ${len(params)}"
 
@@ -685,9 +698,10 @@ async def get_contact_names(waNumber: str = Query(...), user: dict = Depends(get
 async def get_window_status(
     waNumber: str = Query(...),
     contactNumber: str = Query(...),
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
-    acc, err = await resolve_account(from_phone_number=waNumber)
+    await assert_contact_access(tenant_ctx["user"], waNumber, contactNumber, tenant_ctx)
+    acc, err = await resolve_account(from_phone_number=waNumber, org_id=tenant_ctx["org_id"])
     if err or not acc:
         return {"canSendFreeForm": False, "reason": err, "windowSeconds": SERVICE_WINDOW_SECONDS}
 
@@ -701,14 +715,15 @@ async def get_window_status(
     }
 
 @router.post("/messages/react")
-async def react_message(payload: ReactMessageRequest, user: dict = Depends(get_current_user)):
+async def react_message(payload: ReactMessageRequest, tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
     from_num = payload.fromNumber.strip()
     to_num = payload.toNumber.strip()
     msg_id = payload.messageId.strip()
     emoji = (payload.emoji or "").strip()
 
-    await assert_contact_access(user, from_num, to_num)
-    acc, err = await resolve_account(from_phone_number=from_num)
+    await assert_contact_access(user, from_num, to_num, tenant_ctx)
+    acc, err = await resolve_account(from_phone_number=from_num, org_id=tenant_ctx["org_id"])
     if err or not acc:
         raise HTTPException(status_code=409, detail=err or "Account not found")
 
@@ -750,8 +765,8 @@ async def react_message(payload: ReactMessageRequest, user: dict = Depends(get_c
     return {"ok": True, "messageId": msg_id, "emoji": emoji, "direction": "outgoing"}
 
 @router.post("/messages/star")
-async def star_message(payload: StarMessageRequest, user: dict = Depends(get_current_user)):
-    await assert_contact_access(user, payload.waNumber, payload.contactNumber)
+async def star_message(payload: StarMessageRequest, tenant_ctx: dict = Depends(get_tenant_context)):
+    await assert_contact_access(tenant_ctx["user"], payload.waNumber, payload.contactNumber, tenant_ctx)
     clean_wa = normalize_phone(payload.waNumber)
     clean_to = normalize_phone(payload.contactNumber)
 
@@ -767,7 +782,8 @@ async def star_message(payload: StarMessageRequest, user: dict = Depends(get_cur
     return {"ok": True, "messageId": payload.messageId, "starred": bool(payload.starred)}
 
 @router.post("/messages/send", status_code=202)
-async def send_message(payload: SendMessageRequest, user: dict = Depends(get_current_user)):
+async def send_message(payload: SendMessageRequest, tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
     from_num = payload.fromNumber.strip()
     to_num = payload.toNumber.strip()
     text = payload.text.strip()
@@ -777,8 +793,8 @@ async def send_message(payload: SendMessageRequest, user: dict = Depends(get_cur
     if len(text) > 4096:
         raise HTTPException(status_code=400, detail="Message too long (max 4096 characters)")
 
-    await assert_contact_access(user, from_num, to_num)
-    acc, err = await resolve_account(from_phone_number=from_num)
+    await assert_contact_access(user, from_num, to_num, tenant_ctx)
+    acc, err = await resolve_account(from_phone_number=from_num, org_id=tenant_ctx["org_id"])
     if err or not acc:
         raise HTTPException(status_code=400, detail=err or "Account lookup failed")
 
@@ -816,10 +832,10 @@ async def send_media_msg(
     caption: Optional[str] = Form(""),
     contextMessageId: Optional[str] = Form(None),
     file: UploadFile = File(...),
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context),
 ):
-    await assert_contact_access(user, fromNumber, toNumber)
-    acc, err = await resolve_account(from_phone_number=fromNumber)
+    await assert_contact_access(tenant_ctx["user"], fromNumber, toNumber, tenant_ctx)
+    acc, err = await resolve_account(from_phone_number=fromNumber, org_id=tenant_ctx["org_id"])
     if err or not acc:
         raise HTTPException(status_code=400, detail=err or "Account not found")
 

@@ -1,13 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Search, ChevronLeft } from 'lucide-react';
 import { usePolling } from '../hooks/usePolling.js';
+import { useServerEvents } from '../hooks/useServerEvents.js';
 import { api } from '../api.js';
 import { C, FONT, maskPhone } from '../constants.js';
 
 export default function NumberSidebar({ selectedNumber, onSelectNumber, onCollapse }) {
   const [search, setSearch] = useState('');
-  // Polling refresh (every 30s).
-  const { data: numbers, loading } = usePolling(() => api.numbers(), 30000);
+  // Polling refresh (every 30s) + instant SSE refresh on incoming messages.
+  const { data: numbers, loading, refetch } = usePolling(() => api.numbers(), 30000);
+
+  const onServerEvent = useCallback((ev) => {
+    if (ev.type === 'new-message') refetch();
+  }, [refetch]);
+  useServerEvents(onServerEvent);
+
+  // Auto-select when the workspace has a single WhatsApp number (or clear stale cross-org selection).
+  useEffect(() => {
+    if (!Array.isArray(numbers)) return;
+    if (selectedNumber && numbers.some(n => n.wa_number === selectedNumber)) return;
+    if (numbers.length === 1) {
+      onSelectNumber(numbers[0].wa_number);
+    } else if (selectedNumber) {
+      onSelectNumber(null);
+    }
+  }, [numbers, selectedNumber, onSelectNumber]);
 
   const filtered = (numbers || []).filter(n =>
     !search || n.wa_number.includes(search) || (n.display_name && n.display_name.toLowerCase().includes(search.toLowerCase()))

@@ -114,10 +114,33 @@ def require_permission(page: str) -> Callable:
 def is_admin_user(user: Dict[str, Any]) -> bool:
     return user.get("role") == "admin"
 
-async def assert_wa_access(user: Dict[str, Any], wa_number: str):
-    if is_admin_user(user):
+def is_tenant_admin(user: Optional[Dict[str, Any]], tenant_ctx: Optional[Any] = None) -> bool:
+    if is_admin_user(user or {}):
         return True
+    if tenant_ctx is not None:
+        org_role = tenant_ctx.get("org_role") if hasattr(tenant_ctx, "get") else getattr(tenant_ctx, "org_role", None)
+        return org_role in ("owner", "admin")
+    return False
+
+async def assert_wa_access(user: Dict[str, Any], wa_number: str, tenant_ctx: Optional[Any] = None):
     clean = "".join(filter(str.isdigit, str(wa_number or "")))
+    if tenant_ctx is not None:
+        org_id = tenant_ctx.get("org_id") if hasattr(tenant_ctx, "get") else getattr(tenant_ctx, "org_id", None)
+        if org_id:
+            acc_row = await db.fetchrow(
+                """
+                SELECT 1 FROM coexistence.whatsapp_accounts
+                WHERE org_id = $1::uuid
+                  AND regexp_replace(COALESCE(display_phone_number, ''), '[^0-9]', '', 'g') = $2
+                  AND is_active = true
+                LIMIT 1
+                """,
+                org_id, clean
+            )
+            if not acc_row:
+                raise HTTPException(status_code=403, detail="You do not have access to this WhatsApp number")
+    if is_tenant_admin(user, tenant_ctx):
+        return True
     row = await db.fetchrow(
         "SELECT 1 FROM coexistence.contacts WHERE wa_number = $1 AND assigned_user_id = $2 LIMIT 1",
         clean, user["id"]
@@ -126,11 +149,13 @@ async def assert_wa_access(user: Dict[str, Any], wa_number: str):
         raise HTTPException(status_code=403, detail="You do not have access to this WhatsApp number")
     return True
 
-async def assert_contact_access(user: Dict[str, Any], wa_number: str, contact_number: str):
-    if is_admin_user(user):
-        return True
+async def assert_contact_access(user: Dict[str, Any], wa_number: str, contact_number: str, tenant_ctx: Optional[Any] = None):
     clean_wa = "".join(filter(str.isdigit, str(wa_number or "")))
     clean_contact = "".join(filter(str.isdigit, str(contact_number or "")))
+    if tenant_ctx is not None:
+        await assert_wa_access(user, clean_wa, tenant_ctx)
+    if is_tenant_admin(user, tenant_ctx):
+        return True
     row = await db.fetchrow(
         "SELECT 1 FROM coexistence.contacts WHERE wa_number = $1 AND contact_number = $2 AND assigned_user_id = $3 LIMIT 1",
         clean_wa, clean_contact, user["id"]

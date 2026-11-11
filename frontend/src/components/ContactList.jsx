@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Search, User } from 'lucide-react';
 import { usePolling } from '../hooks/usePolling.js';
+import { useServerEvents } from '../hooks/useServerEvents.js';
 import { api } from '../api.js';
 import { C, FONT, relativeTime, maskPhone, darkenColor } from '../constants.js';
 import TagMultiSelect from './TagMultiSelect.jsx';
@@ -23,8 +24,15 @@ export default function ContactList({ waNumber, width = 380, selectedContact, on
     }).catch(() => {});
     return () => { alive = false; };
   }, [waNumber]);
-  // Polling refresh (every 30s).
+  // Polling refresh (every 30s) + instant SSE refresh on incoming messages.
   const { data, loading, refetch } = usePolling(() => api.contacts(waNumber, '30d'), 30000);
+  const onServerEvent = useCallback((ev) => {
+    if (ev.type !== 'new-message') return;
+    const d = ev.data || {};
+    const digits = (s) => String(s || '').replace(/\D/g, '');
+    if (digits(d.waNumber) === digits(waNumber)) refetch();
+  }, [waNumber, refetch]);
+  useServerEvents(onServerEvent);
 
   // Tag taxonomy for the filter dropdown.
   useEffect(() => {

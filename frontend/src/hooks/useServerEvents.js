@@ -10,7 +10,7 @@
 
 import { useEffect } from 'react';
 
-const SUBSCRIBED_EVENTS = ['message-status', 'hello'];
+const SUBSCRIBED_EVENTS = ['message-status', 'new-message', 'hello'];
 
 export function useServerEvents(onEvent) {
   useEffect(() => {

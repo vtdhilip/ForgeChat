@@ -64,8 +64,8 @@ export default function ChatsPage({ subParts = [], navigate, user }) {
     : MAX_CONTACT_W;
   const effectiveContactW = Math.min(contactWidth, MAX_CONTACT_W, fitMax);
 
-  const selectNumber = (n) => { setSelectedNumber(n); setSelectedContact(null); };
-  const selectContact = (c) => setSelectedContact(c);
+  const selectNumber = useCallback((n) => { setSelectedNumber(n); setSelectedContact(null); }, []);
+  const selectContact = useCallback((c) => setSelectedContact(c), []);
 
   // Drag the divider to resize the contacts list; the chat window (flex:1) takes the rest.
   const startResize = useCallback((e) => {

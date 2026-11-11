@@ -140,13 +140,17 @@ export default function ChatWindow({ waNumber, contactNumber, onContactSaved }) 
   // status the backend pushes a `message-status` SSE event; apply it instantly
   // (monotonically) so the tick turns blue without waiting for the 15s poll.
   const onServerEvent = useCallback((ev) => {
-    if (ev.type !== 'message-status') return;
     const d = ev.data || {};
     const digits = (s) => String(s || '').replace(/\D/g, '');
     if (digits(d.waNumber) !== digits(waNumber) || digits(d.contactNumber) !== digits(contactNumber)) return;
+    if (ev.type === 'new-message') {
+      refetch();
+      return;
+    }
+    if (ev.type !== 'message-status') return;
     if (!d.messageId || !d.status) return;
     setStatusOverrides(prev => ({ ...prev, [d.messageId]: higherStatus(prev[d.messageId] || 'sent', d.status) }));
-  }, [waNumber, contactNumber]);
+  }, [waNumber, contactNumber, refetch]);
   useServerEvents(onServerEvent);
 
   // Drop stale overrides when switching conversations.

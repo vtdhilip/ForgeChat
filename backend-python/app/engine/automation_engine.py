@@ -250,7 +250,7 @@ async def update_execution_status(conn, execution_id: int, status: str, error_me
     await conn.execute(
         """
         UPDATE coexistence.automation_executions
-           SET status = $1, completed_at = CASE WHEN $1 IN ('success', 'error') THEN NOW() ELSE completed_at END,
+           SET status = $1, completed_at = CASE WHEN $1::text IN ('success', 'error') THEN NOW() ELSE completed_at END,
                error_message = $2
          WHERE id = $3
         """,
@@ -285,9 +285,13 @@ async def execute_message_node(conn, execution_id: int, node: Dict[str, Any], co
     from_phone = context.get("trigger_data", {}).get("wa_number")
     contact_number = context.get("contact_number")
 
-    account = await resolve_account(account_id=node.get("whatsappAccountId"), from_phone_number=from_phone)
+    account, acc_err = await resolve_account(
+        account_id=node.get("whatsappAccountId"),
+        from_phone_number=from_phone,
+        org_id=context.get("org_id"),
+    )
     if not account:
-        raise RuntimeError(f"No WhatsApp account resolved for {node.get('whatsappAccountId') or from_phone}")
+        raise RuntimeError(acc_err or f"No WhatsApp account resolved for {node.get('whatsappAccountId') or from_phone}")
 
     output = {}
     local_id = None
@@ -322,17 +326,15 @@ async def execute_message_node(conn, execution_id: int, node: Dict[str, Any], co
 
         asyncio.create_task(
             dispatch_send_task(
+                kind="template",
                 account=account,
-                to_number=contact_number,
-                message_payload={
-                    "type": "template",
-                    "template": {
-                        "name": template.get("name") if template else "",
-                        "language": {"code": template.get("language", "en") if template else "en"},
-                        "components": components,
-                    },
+                to=contact_number,
+                local_message_id=local_id,
+                payload={
+                    "name": template.get("name") if template else "",
+                    "languageCode": template.get("language", "en") if template else "en",
+                    "components": components,
                 },
-                local_id=local_id,
             )
         )
 
@@ -357,13 +359,11 @@ async def execute_message_node(conn, execution_id: int, node: Dict[str, Any], co
 
         asyncio.create_task(
             dispatch_send_task(
+                kind="text",
                 account=account,
-                to_number=contact_number,
-                message_payload={
-                    "type": "text",
-                    "text": {"body": resolved_body},
-                },
-                local_id=local_id,
+                to=contact_number,
+                local_message_id=local_id,
+                payload={"body": resolved_body},
             )
         )
 
@@ -709,12 +709,20 @@ async def resume_automation(execution_id: int, record: Dict[str, Any]) -> Option
 async def evaluate_triggers(message_record: Dict[str, Any]) -> List[Dict[str, Any]]:
     executions = []
     try:
+        org_id = message_record.get("org_id")
         async with get_db() as conn:
-            automations = await conn.fetch(
-                "SELECT id, name, status, trigger_type, config FROM coexistence.chatbots WHERE status = 'active'"
-            )
+            if org_id:
+                automations = await conn.fetch(
+                    "SELECT id, name, status, trigger_type, config FROM coexistence.chatbots WHERE status = 'active' AND org_id = $1::uuid",
+                    str(org_id),
+                )
+            else:
+                automations = await conn.fetch(
+                    "SELECT id, name, status, trigger_type, config FROM coexistence.chatbots WHERE status = 'active'"
+                )
 
             context = {
+                "org_id": str(org_id) if org_id else None,
                 "contact_number": message_record.get("contact_number"),
                 "message_body": message_record.get("message_body"),
                 "message_type": message_record.get("message_type"),

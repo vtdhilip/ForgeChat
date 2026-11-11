@@ -151,6 +151,7 @@ async def process_whatsapp_webhook(request: Request):
 
     entries = body.get("entry") or []
     status_updates = []
+    incoming_events = []
 
     async with db.pool.acquire() as conn:
         async with conn.transaction():
@@ -279,6 +280,7 @@ async def process_whatsapp_webhook(request: Request):
 
                         # Trigger Automations & AI Agent routing asynchronously
                         record = {
+                            "org_id": str(org_id) if org_id else None,
                             "message_id": m_id,
                             "phone_number_id": phone_number_id,
                             "wa_number": display_phone,
@@ -291,6 +293,12 @@ async def process_whatsapp_webhook(request: Request):
                             "timestamp": m_timestamp.isoformat() if m_timestamp else None,
                             "status": "received",
                         }
+                        incoming_events.append({
+                            "orgId": str(org_id) if org_id else None,
+                            "waNumber": display_phone,
+                            "contactNumber": m_from,
+                            "messageId": m_id,
+                        })
                         from app.engine.automation_engine import evaluate_triggers
                         from app.services.agent_router import route_if_active
                         asyncio.create_task(evaluate_triggers(record))
@@ -310,7 +318,9 @@ async def process_whatsapp_webhook(request: Request):
                                 display_phone, m_from, p_name, org_id
                             )
 
-    # Emit real-time status updates to SSE subscribers
+    # Emit real-time updates to SSE subscribers
+    for ev in incoming_events:
+        await bus.emit("new-message", ev)
     for u in status_updates:
         await bus.emit("message-status", u)
 
