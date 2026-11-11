@@ -117,6 +117,7 @@ export default function SuperAdminPage({ user, onOrgSwitch }) {
       setSuccessMsg(`Features updated for ${selectedOrg.name}`);
       setShowSwitchboardModal(false);
       loadData();
+      if (onOrgSwitch) onOrgSwitch(selectedOrg.id);
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err) {
       setError(err.message || 'Failed to update features');

@@ -1,5 +1,5 @@
 import time
-import random
+import secrets
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -12,7 +12,7 @@ FIELD_TYPES = {'text', 'number', 'phone', 'email', 'date', 'url', 'textarea'}
 
 def gen_id(prefix: str) -> str:
     now_ms = int(time.time() * 1000)
-    rand = random.randint(0, 9999)
+    rand = secrets.randbelow(10000)
     return f"{prefix}-{now_ms}-{rand}"
 
 def norm_type(t: Optional[str]) -> str:

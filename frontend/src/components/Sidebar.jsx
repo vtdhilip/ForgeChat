@@ -24,14 +24,18 @@ export default function Sidebar({ activePage, onPageChange, collapsed, setCollap
 
   // Filter items:
   // 1. Super Admin item only visible to global admin
-  // 2. Gated by tenant module switchboard if configured (unless Super Admin)
+  // 2. Gated by tenant module switchboard if configured
   // 3. Gated by user role/pages
   const visibleItems = NAV_ITEMS.filter(item => {
     if (item.superAdminOnly) return isSuperAdmin;
 
     // Check tenant module switchboard
-    if (!isSuperAdmin && orgModules && item.moduleKey) {
+    if (orgModules && item.moduleKey) {
       if (orgModules[item.moduleKey] === false) return false;
+      if (orgModules[item.moduleKey] === true && user?.role !== 'viewer') {
+        const revoked = Array.isArray(user?.permissions?.revoke) && user.permissions.revoke.includes(item.id);
+        if (!revoked) return true;
+      }
     }
 
     if (isSuperAdmin || !Array.isArray(user?.pages)) return true;

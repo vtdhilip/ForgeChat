@@ -26,8 +26,12 @@ async function ensureProductTable() {
  */
 async function syncProductsFromShopify(domain, accessToken = null) {
   if (!domain) return 0;
+  const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').trim().toLowerCase();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(cleanDomain)) {
+    console.error(`[productCatalog] Rejected invalid/non-Shopify domain: ${cleanDomain}`);
+    return 0;
+  }
   await ensureProductTable();
-  const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').trim();
   let count = 0;
 
   try {

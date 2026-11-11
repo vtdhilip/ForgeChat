@@ -1,5 +1,5 @@
 import re
-import random
+import secrets
 from fastapi import APIRouter, HTTPException, status, Depends, Response
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/organizations", tags=["Organizations"])
 
 def slugify(name: str) -> str:
     cleaned = re.sub(r'[^a-z0-9]+', '-', (name or '').lower().strip()).strip('-')
-    return cleaned or f"org-{random.randint(1000, 9999)}"
+    return cleaned or f"org-{secrets.randbelow(9000) + 1000}"
 
 class OnboardRequest(BaseModel):
     name: str
@@ -56,7 +56,7 @@ async def super_admin_onboard(payload: OnboardRequest, user: dict = Depends(requ
     slug = slugify(name)
     existing_slug = await db.fetchrow("SELECT 1 FROM coexistence.organizations WHERE slug = $1", slug)
     if existing_slug:
-        slug = f"{slug}-{random.randint(1000, 9999)}"
+        slug = f"{slug}-{secrets.randbelow(9000) + 1000}"
 
     modules = payload.modules or {}
     features = payload.features or {}

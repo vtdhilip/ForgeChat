@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 
 from app.core.database import db
-from app.middleware.auth import get_current_user, require_admin
+from app.middleware.auth import get_current_user, require_permission
 
 router = APIRouter(prefix="/api/agents", tags=["AI Agents"])
 
@@ -156,7 +156,7 @@ async def get_agent(agent_id: int, user: dict = Depends(get_current_user)):
     return {**agent, "tools": [tool_shape(dict(t)) for t in tools]}
 
 @router.post("", status_code=201)
-async def create_agent(payload: AgentCreate, admin: dict = Depends(require_admin)):
+async def create_agent(payload: AgentCreate, admin: dict = Depends(require_permission("ai-agent-builder"))):
     name = payload.name.strip()
     if not name or not payload.systemPrompt:
         raise HTTPException(status_code=400, detail="name and systemPrompt are required")
@@ -205,7 +205,7 @@ async def create_agent(payload: AgentCreate, admin: dict = Depends(require_admin
         raise HTTPException(status_code=500, detail="Failed to create agent")
 
 @router.put("/{agent_id}")
-async def update_agent(agent_id: int, payload: AgentUpdate, admin: dict = Depends(require_admin)):
+async def update_agent(agent_id: int, payload: AgentUpdate, admin: dict = Depends(require_permission("ai-agent-builder"))):
     ex = await db.fetchrow("SELECT * FROM coexistence.agents WHERE id = $1", agent_id)
     if not ex:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -278,7 +278,7 @@ async def update_agent(agent_id: int, payload: AgentUpdate, admin: dict = Depend
         raise HTTPException(status_code=500, detail="Failed to update agent")
 
 @router.delete("/{agent_id}")
-async def delete_agent(agent_id: int, admin: dict = Depends(require_admin)):
+async def delete_agent(agent_id: int, admin: dict = Depends(require_permission("ai-agent-builder"))):
     res = await db.execute("DELETE FROM coexistence.agents WHERE id = $1", agent_id)
     if res.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -287,7 +287,7 @@ async def delete_agent(agent_id: int, admin: dict = Depends(require_admin)):
 # --- Nested Tools ---
 
 @router.post("/{agent_id}/tools", status_code=201)
-async def add_tool(agent_id: int, payload: ToolCreate, admin: dict = Depends(require_admin)):
+async def add_tool(agent_id: int, payload: ToolCreate, admin: dict = Depends(require_permission("ai-agent-builder"))):
     row = await db.fetchrow(
         """
         INSERT INTO coexistence.agent_tools (agent_id, tool_type, config, is_enabled)
@@ -298,7 +298,7 @@ async def add_tool(agent_id: int, payload: ToolCreate, admin: dict = Depends(req
     return tool_shape(dict(row))
 
 @router.put("/{agent_id}/tools/{tool_id}")
-async def update_tool(agent_id: int, tool_id: int, payload: ToolUpdate, admin: dict = Depends(require_admin)):
+async def update_tool(agent_id: int, tool_id: int, payload: ToolUpdate, admin: dict = Depends(require_permission("ai-agent-builder"))):
     sets = []
     params = [agent_id, tool_id]
     if payload.config is not None:
@@ -318,7 +318,7 @@ async def update_tool(agent_id: int, tool_id: int, payload: ToolUpdate, admin: d
     return tool_shape(dict(row))
 
 @router.delete("/{agent_id}/tools/{tool_id}")
-async def delete_tool(agent_id: int, tool_id: int, admin: dict = Depends(require_admin)):
+async def delete_tool(agent_id: int, tool_id: int, admin: dict = Depends(require_permission("ai-agent-builder"))):
     res = await db.execute("DELETE FROM coexistence.agent_tools WHERE agent_id = $1 AND id = $2", agent_id, tool_id)
     if res.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Tool not found")

@@ -68,7 +68,7 @@ class MediaUpdate(BaseModel):
     autoResync: Optional[bool] = None
 
 @router.get("")
-async def list_media(accountId: Optional[int] = None, user: dict = Depends(get_current_user)):
+async def list_media(accountId: Optional[int] = None, user: dict = Depends(require_permission("media-library"))):
     await mark_expired()
     params = []
     acc_filter = ""
@@ -112,6 +112,8 @@ async def upload_media(
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="No file uploaded")
+    if len(contents) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 100MB)")
 
     mime = file.content_type or "application/octet-stream"
     sha = hashlib.sha256(contents).hexdigest()

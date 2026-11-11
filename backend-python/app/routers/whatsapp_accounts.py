@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.core.database import db
 from app.core.crypto import encrypt, decrypt, mask_secret
-from app.middleware.auth import get_current_user, require_admin
+from app.middleware.auth import get_current_user, require_permission
 from app.middleware.tenant import get_tenant_context
 from app.services.whatsapp_service import fetch_phone_meta, get_account_by_phone_number
 
@@ -66,7 +66,8 @@ async def list_accounts(
 
     query += " ORDER BY is_default DESC, display_name ASC"
     rows = await db.fetch(query, *params)
-    include_secrets = user.get("role") == "admin"
+    org_features = (tenant_ctx.get("org") or {}).get("settings", {}).get("features", {})
+    include_secrets = user.get("role") == "admin" or bool(org_features.get("allow_wa_config"))
     return [public_shape(dict(r), include_secrets=include_secrets) for r in rows]
 
 @router.get("/by-phone/{phone}")
@@ -103,7 +104,7 @@ async def get_account(account_id: int, tenant_ctx: dict = Depends(get_tenant_con
 async def create_account(
     payload: WhatsAppAccountCreate,
     tenant_ctx: dict = Depends(get_tenant_context),
-    admin: dict = Depends(require_admin)
+    admin: dict = Depends(require_permission("admin-settings:whatsapp-accounts"))
 ):
     phone_number_id = payload.phoneNumberId.strip()
     waba_id = payload.wabaId.strip()
@@ -159,9 +160,14 @@ async def create_account(
 async def update_account(
     account_id: int,
     payload: WhatsAppAccountUpdate,
-    admin: dict = Depends(require_admin)
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("admin-settings:whatsapp-accounts"))
 ):
-    current = await db.fetchrow("SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1", account_id)
+    org_id = tenant_ctx.get("org_id")
+    if org_id and admin.get("role") != "admin":
+        current = await db.fetchrow("SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2", account_id, org_id)
+    else:
+        current = await db.fetchrow("SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1", account_id)
     if not current:
         raise HTTPException(status_code=404, detail="Not found")
 
@@ -230,12 +236,20 @@ async def update_account(
     return public_shape(dict(updated_row), include_secrets=True)
 
 @router.delete("/{account_id}")
-async def delete_account(account_id: int, admin: dict = Depends(require_admin)):
-    cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.whatsapp_accounts")
+async def delete_account(
+    account_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("admin-settings:whatsapp-accounts"))
+):
+    org_id = tenant_ctx.get("org_id")
+    cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.whatsapp_accounts WHERE ($1::uuid IS NULL OR org_id = $1)", org_id if admin.get("role") != "admin" else None)
     if cnt and cnt <= 1:
         raise HTTPException(status_code=409, detail="Cannot delete the only WhatsApp Business account. Edit it to change the connected number.")
     
-    result = await db.execute("DELETE FROM coexistence.whatsapp_accounts WHERE id = $1", account_id)
+    if org_id and admin.get("role") != "admin":
+        result = await db.execute("DELETE FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2", account_id, org_id)
+    else:
+        result = await db.execute("DELETE FROM coexistence.whatsapp_accounts WHERE id = $1", account_id)
     if result.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Not found")
     return {"ok": True}

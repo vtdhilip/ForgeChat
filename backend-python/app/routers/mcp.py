@@ -218,7 +218,7 @@ async def mcp_list_google_accounts(mcp: dict = Depends(require_cap("discovery"))
 async def mcp_search_spreadsheets(
     googleAccountId: int = Query(...),
     q: Optional[str] = Query(""),
-    pageSize: int = Query(50),
+    pageSize: int = Query(50, ge=1, le=100),
     mcp: dict = Depends(require_cap("discovery")),
 ):
     try:
@@ -243,7 +243,7 @@ async def mcp_read_sheet_values(
     googleAccountId: int = Query(...),
     tab: str = Query(...),
     range: Optional[str] = Query(None),
-    maxRows: int = Query(100),
+    maxRows: int = Query(100, ge=1, le=1000),
     mcp: dict = Depends(require_cap("discovery")),
 ):
     try:

@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Synaptic Chat"
     PORT: int = int(os.getenv("PORT", "3011"))
     ENVIRONMENT: str = os.getenv("NODE_ENV", "production")
+    CORS_ORIGIN: Optional[str] = os.getenv("CORS_ORIGIN")
+    DOMAIN: str = os.getenv("DOMAIN", "")
+    GOOGLE_SHEET_WEBHOOK_URL: Optional[str] = os.getenv("GOOGLE_SHEET_WEBHOOK_URL")
+    GOOGLE_SHEETS_WEBHOOK_URL: Optional[str] = os.getenv("GOOGLE_SHEETS_WEBHOOK_URL")
     
     # Database & Redis
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:synapticchat@forgecrm-db:5432/postgres")

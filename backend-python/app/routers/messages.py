@@ -5,7 +5,6 @@ import csv
 import time
 import json
 import asyncio
-import subprocess
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Union, Tuple
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form, Request, Response

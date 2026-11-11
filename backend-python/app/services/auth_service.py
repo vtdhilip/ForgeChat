@@ -59,8 +59,6 @@ async def load_user_session(user_id: Any, requested_org_id: Optional[str] = None
         else:
             active_org = org_rows[0]
 
-    pages = list(effective_pages(user_row))
-
     organizations = []
     for o in org_rows:
         organizations.append({
@@ -82,6 +80,8 @@ async def load_user_session(user_id: Any, requested_org_id: Optional[str] = None
             "settings": active_org["settings"] or {},
             "role": active_org["member_role"] or ("owner" if is_super_admin else "viewer")
         }
+
+    pages = list(effective_pages(user_row, active_org_dict))
 
     return {
         "id": user_row["id"],

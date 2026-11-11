@@ -25,7 +25,7 @@ async def auth_status():
     return {"setupRequired": count == 0}
 
 @router.post("/setup")
-async def auth_setup(payload: SetupRequest, response: Response):
+async def auth_setup(payload: SetupRequest, response: Response, request: Request):
     count = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.forgecrm_users")
     if count > 0:
         raise HTTPException(
@@ -53,12 +53,13 @@ async def auth_setup(payload: SetupRequest, response: Response):
         "role": user_row["role"]
     })
 
+    is_secure = request.url.scheme == "https" or bool(settings.CORS_ORIGIN and settings.CORS_ORIGIN.startswith("https"))
     response.set_cookie(
         key=settings.COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="strict",
-        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        secure=is_secure,
         max_age=settings.TOKEN_EXPIRE_HOURS * 3600
     )
 
@@ -66,7 +67,13 @@ async def auth_setup(payload: SetupRequest, response: Response):
     return {"user": session}
 
 @router.post("/login")
-async def auth_login(payload: LoginRequest, response: Response):
+async def auth_login(payload: LoginRequest, response: Response, request: Request):
+    if len(payload.email) > 255 or len(payload.password) > 256:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid credentials format"
+        )
+
     email = payload.email.strip().lower()
     user_row = await db.fetchrow(
         "SELECT * FROM coexistence.forgecrm_users WHERE email = $1",
@@ -91,12 +98,13 @@ async def auth_login(payload: LoginRequest, response: Response):
         "role": user_row["role"]
     })
 
+    is_secure = request.url.scheme == "https" or bool(settings.CORS_ORIGIN and settings.CORS_ORIGIN.startswith("https"))
     response.set_cookie(
         key=settings.COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="strict",
-        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        secure=is_secure,
         max_age=settings.TOKEN_EXPIRE_HOURS * 3600
     )
 

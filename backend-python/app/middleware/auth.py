@@ -67,9 +67,43 @@ async def require_admin(user: Dict[str, Any] = Depends(get_current_user)) -> Dic
         )
     return user
 
+async def _resolve_active_org(request: Request, user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    requested_org_id = (
+        request.headers.get("x-org-id") or
+        request.headers.get("x-tenant-id") or
+        request.cookies.get("synapticchat_active_org") or
+        request.cookies.get("forgecrm_active_org") or
+        request.query_params.get("org_id") or
+        ""
+    ).strip()
+
+    query = """
+        SELECT o.id, o.settings, om.role AS member_role
+          FROM coexistence.organizations o
+          JOIN coexistence.organization_members om ON om.org_id = o.id
+         WHERE om.user_id = $1 AND o.is_active = true
+    """
+    params = [user["id"]]
+    if requested_org_id:
+        query += " AND (o.id::text = $2 OR o.slug = $2)"
+        params.append(requested_org_id)
+    query += " ORDER BY o.created_at ASC LIMIT 1"
+
+    row = await db.fetchrow(query, *params)
+    if not row:
+        return None
+    return {
+        "id": str(row["id"]),
+        "settings": row["settings"] or {},
+        "role": row["member_role"] or "member",
+    }
+
 def require_permission(page: str) -> Callable:
-    async def dependency(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-        if not has_permission(user, page):
+    async def dependency(request: Request, user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+        if user.get("role") == "admin":
+            return user
+        active_org = await _resolve_active_org(request, user)
+        if not has_permission(user, page, active_org):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied for '{page}'"

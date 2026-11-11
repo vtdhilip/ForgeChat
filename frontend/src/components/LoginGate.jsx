@@ -1,9 +1,30 @@
 import { useState } from 'react';
-import { Lock, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { api } from '../api.js';
 import { C, FONT } from '../constants.js';
 
-export default function LoginGate({ onLogin }) {
+const label = {
+  display: 'block',
+  fontSize: 13,
+  fontWeight: 600,
+  color: C.textSecondary,
+  marginBottom: 6,
+};
+
+const input = {
+  width: '100%',
+  height: 42,
+  padding: '0 14px',
+  borderRadius: 8,
+  border: `1px solid ${C.borderDark}`,
+  background: C.cardBg,
+  color: C.text,
+  fontSize: 14,
+  fontFamily: FONT,
+  outline: 'none',
+};
+
+export default function LoginGate({ onLogin, onBackToMarketing }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -12,14 +33,14 @@ export default function LoginGate({ onLogin }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) { setError('Email and password required.'); return; }
+    if (!email.trim() || !password) { setError('Enter your email and password.'); return; }
     setError('');
     setLoading(true);
     try {
-      const { user } = await api.auth.login(email, password);
+      const { user } = await api.auth.login(email.trim(), password);
       onLogin(user);
     } catch (err) {
-      setError(err.message || 'Invalid credentials');
+      setError(err.message || 'Email or password is incorrect.');
     } finally {
       setLoading(false);
     }
@@ -27,291 +48,160 @@ export default function LoginGate({ onLogin }) {
 
   return (
     <div style={{
-      display: 'flex',
-      width: '100%',
+      minHeight: '100%',
       height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: C.pageBg,
+      padding: 24,
       fontFamily: FONT,
+      overflowY: 'auto',
     }}>
-      {/* Left brand panel — fills full height */}
-      <div className="login-brand-panel" style={{
-        flex: 1,
-        minWidth: 0,
-        background: C.headerBg,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        padding: '48px 64px',
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
-        {/* Subtle radial accent */}
-        <div style={{
-          position: 'absolute',
-          top: '-20%',
-          right: '-10%',
-          width: '60%',
-          height: '60%',
-          background: 'radial-gradient(circle, rgba(220,38,38,0.15) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute',
-          bottom: '-20%',
-          left: '-10%',
-          width: '50%',
-          height: '50%',
-          background: 'radial-gradient(circle, rgba(83,74,183,0.12) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
+      <style>{`
+        .sc-field:focus { border-color: var(--c-primary); box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
+        .sc-submit:hover:not(:disabled) { background: var(--c-primaryHover); }
+        .sc-submit:focus-visible, .sc-toggle:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
+        .sc-submit:disabled { cursor: not-allowed; opacity: .7; }
+      `}</style>
 
-        <div style={{ position: 'relative', zIndex: 1, maxWidth: 480 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 40 }}>
-            <img
-              src="/synaptic-logo.svg"
-              alt="Synaptic Chat"
-              style={{ height: 56, width: 56, objectFit: 'contain', flexShrink: 0, borderRadius: 14 }}
-              onError={e => { e.currentTarget.style.display = 'none'; }}
+      <main style={{ width: '100%', maxWidth: 360 }}>
+        {onBackToMarketing && (
+          <button
+            type="button"
+            onClick={onBackToMarketing}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'none',
+              border: 'none',
+              color: C.textSecondary,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              padding: 0,
+              marginBottom: 20,
+            }}
+          >
+            ← Back to Homepage
+          </button>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
+          <img
+            src="/synaptic-logo.svg"
+            alt=""
+            aria-hidden="true"
+            style={{ width: 32, height: 32, objectFit: 'contain' }}
+            onError={e => { e.currentTarget.style.display = 'none'; }}
+          />
+          <span style={{ fontSize: 16, fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>
+            Synaptic Chat
+          </span>
+        </div>
+
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: '0 0 6px', letterSpacing: '-0.02em' }}>
+          Sign in
+        </h1>
+        <p style={{ fontSize: 14, color: C.textSecondary, margin: '0 0 28px', lineHeight: 1.5 }}>
+          Use the email and password for your account.
+        </p>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <div style={{ marginBottom: 16 }}>
+            <label htmlFor="login-email" style={label}>Email</label>
+            <input
+              id="login-email"
+              className="sc-field"
+              type="email"
+              name="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="you@company.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              autoFocus
+              style={input}
             />
-            <div style={{ lineHeight: 1.15 }}>
-              <div style={{
-                fontSize: 28,
-                fontWeight: 800,
-                letterSpacing: '-0.02em',
-                color: C.headerText,
-              }}>
-                Synaptic<span style={{ color: C.primary }}> Chat</span>
-              </div>
-              <div style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: C.headerMuted,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                marginTop: 4,
-              }}>
-                powered by Synaptic OS
-              </div>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label htmlFor="login-password" style={label}>Password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                id="login-password"
+                className="sc-field"
+                type={showPw ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                style={{ ...input, paddingRight: 44 }}
+              />
+              <button
+                type="button"
+                className="sc-toggle"
+                onClick={() => setShowPw(v => !v)}
+                aria-label={showPw ? 'Hide password' : 'Show password'}
+                style={{
+                  position: 'absolute',
+                  right: 6,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 32,
+                  height: 32,
+                  border: 'none',
+                  borderRadius: 6,
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: C.textSecondary,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 
-          <h1 style={{
-            fontSize: 42,
-            fontWeight: 800,
-            color: C.headerText,
-            letterSpacing: '-0.03em',
-            lineHeight: 1.15,
-            marginBottom: 20,
-          }}>
-            Manage conversations at scale
-          </h1>
-          <p style={{
-            fontSize: 16,
-            color: C.headerMuted,
-            lineHeight: 1.6,
-            marginBottom: 40,
-          }}>
-            Reply to WhatsApp chats, build templates, send broadcasts, and automate responses — all from one place for your team.
-          </p>
-
-        </div>
-
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 32,
-            left: 64,
-            fontSize: 10,
-            fontWeight: 600,
-            color: '#52525b',
-            letterSpacing: '.06em',
-            textTransform: 'uppercase',
-          }}
-        >
-          SYNAPTIC <span style={{ color: C.primary }}>CHAT</span>
-        </div>
-      </div>
-
-      {/* Right form panel */}
-      <div className="login-form-panel" style={{
-        width: '100%',
-        maxWidth: 540,
-        minWidth: 360,
-        background: C.pageBg,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: '40px 48px',
-        overflowY: 'auto',
-      }}>
-        <div style={{
-          width: '100%',
-          maxWidth: 400,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <Lock size={14} color={C.primary} />
-            <span style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: C.primary,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
+          {error && (
+            <div role="alert" style={{
+              background: C.primaryLight,
+              color: '#A32D2D',
+              borderRadius: 8,
+              padding: '10px 12px',
+              fontSize: 13,
+              lineHeight: 1.45,
+              marginBottom: 16,
             }}>
-              Sign In
-            </span>
-          </div>
-          <h2 style={{
-            fontSize: 24,
-            fontWeight: 700,
-            color: C.text,
-            marginBottom: 28,
-            letterSpacing: '-0.02em',
-          }}>
-            Welcome back
-          </h2>
+              {error}
+            </div>
+          )}
 
-          <form onSubmit={handleSubmit}>
-            <label style={{ display: 'block', marginBottom: 18 }}>
-              <div style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: C.textSecondary,
-                letterSpacing: '0.07em',
-                textTransform: 'uppercase',
-                marginBottom: 6,
-              }}>
-                Email
-              </div>
-              <input
-                type="email"
-                placeholder="admin@synapticchat.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                autoFocus
-                style={{
-                  width: '100%',
-                  padding: '11px 14px',
-                  borderRadius: 10,
-                  border: `1.5px solid ${C.border}`,
-                  fontSize: 14,
-                  fontFamily: FONT,
-                  outline: 'none',
-                  background: C.cardBg,
-                  color: C.text,
-                  transition: 'border .15s',
-                }}
-                onFocus={e => (e.target.style.borderColor = C.purple)}
-                onBlur={e => (e.target.style.borderColor = C.border)}
-              />
-            </label>
-
-            <label style={{ display: 'block', marginBottom: 24 }}>
-              <div style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: C.textSecondary,
-                letterSpacing: '0.07em',
-                textTransform: 'uppercase',
-                marginBottom: 6,
-              }}>
-                Password
-              </div>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '11px 38px 11px 14px',
-                    borderRadius: 10,
-                    border: `1.5px solid ${C.border}`,
-                    fontSize: 14,
-                    fontFamily: FONT,
-                    outline: 'none',
-                    background: C.cardBg,
-                    color: C.text,
-                    transition: 'border .15s',
-                  }}
-                  onFocus={e => (e.target.style.borderColor = C.purple)}
-                  onBlur={e => (e.target.style.borderColor = C.border)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(v => !v)}
-                  style={{
-                    position: 'absolute',
-                    right: 12,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: C.textSecondary,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </label>
-
-            {error && (
-              <div style={{
-                background: C.primaryLight,
-                color: '#A32D2D',
-                borderRadius: 8,
-                padding: '10px 14px',
-                fontSize: 13,
-                marginBottom: 16,
-                fontWeight: 500,
-              }}>
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: 10,
-                border: 'none',
-                background: C.primary,
-                color: '#fff',
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                fontFamily: FONT,
-                transition: 'opacity .15s, background .15s',
-              }}
-              onMouseEnter={e => { if (!loading) e.currentTarget.style.background = C.primaryHover; }}
-              onMouseLeave={e => { e.currentTarget.style.background = C.primary; }}
-            >
-              <LogIn size={16} />
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {/* Responsive: hide brand panel on small screens */}
-      <style>{`
-        @media (max-width: 900px) {
-          .login-brand-panel { display: none !important; }
-        }
-        @media (max-width: 900px) {
-          .login-form-panel { max-width: 100% !important; padding: 24px !important; }
-        }
-      `}</style>
+          <button
+            type="submit"
+            className="sc-submit"
+            disabled={loading}
+            style={{
+              width: '100%',
+              height: 42,
+              borderRadius: 8,
+              border: 'none',
+              background: C.primary,
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 600,
+              fontFamily: FONT,
+              cursor: 'pointer',
+              transition: 'background .15s, opacity .15s',
+            }}
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </main>
     </div>
   );
 }

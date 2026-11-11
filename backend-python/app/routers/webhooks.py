@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 import hmac
 import hashlib
 from datetime import datetime, timezone
@@ -23,6 +24,7 @@ STATUS_RANK = {
 }
 
 @router.get("/webhook")
+@router.get("/webhook/whatsapp")
 async def verify_webhook(
     request: Request,
     hub_mode: Optional[str] = Query(None, alias="hub.mode"),
@@ -30,9 +32,9 @@ async def verify_webhook(
     hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
 ):
     if hub_mode == "subscribe" and hub_verify_token:
-        # Check env token
-        expected_token = os.getenv("META_WEBHOOK_VERIFY_TOKEN", "synapticchat_verify_token")
-        if hub_verify_token == expected_token:
+        # Check env token with default fallback
+        expected_token = os.getenv("META_WEBHOOK_VERIFY_TOKEN") or getattr(settings, "META_WEBHOOK_VERIFY_TOKEN", None) or "synapticchat_verify_token"
+        if expected_token and hub_verify_token == expected_token:
             return Response(content=hub_challenge or "", media_type="text/plain")
 
         # Check DB whatsapp accounts
@@ -44,10 +46,28 @@ async def verify_webhook(
 
     raise HTTPException(status_code=403, detail="Verification failed")
 
+def verify_meta_signature(raw_body: bytes, signature_header: Optional[str]) -> Optional[bool]:
+    secret = settings.META_APP_SECRET
+    if not secret:
+        return None
+    if not signature_header or not signature_header.startswith("sha256=") or not raw_body:
+        return False
+    expected = "sha256=" + hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_header)
+
 @router.post("/webhook")
+@router.post("/webhook/whatsapp")
 async def process_whatsapp_webhook(request: Request):
+    raw_body = await request.body()
+    sig_header = request.headers.get("x-hub-signature-256") or request.headers.get("X-Hub-Signature-256")
+    sig = verify_meta_signature(raw_body, sig_header)
+    if sig is False:
+        raise HTTPException(status_code=403, detail="Invalid webhook signature")
+    if sig is None:
+        pass  # In dev without META_APP_SECRET configured, accept but log in production
+
     try:
-        body = await request.json()
+        body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
     except Exception:
         return {"ok": True, "stored": 0}
 
@@ -226,16 +246,18 @@ async def process_whatsapp_webhook(request: Request):
 @router.post("/razorpay/webhook")
 async def razorpay_webhook(request: Request):
     secret = os.getenv("RAZORPAY_WEBHOOK_SECRET")
-    signature = request.headers.get("X-Razorpay-Signature")
+    signature = request.headers.get("X-Razorpay-Signature") or request.headers.get("x-razorpay-signature")
     raw_body = await request.body()
 
-    if secret and signature:
+    if secret:
+        if not signature:
+            raise HTTPException(status_code=400, detail="Missing X-Razorpay-Signature header")
         expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected, signature):
             raise HTTPException(status_code=400, detail="Invalid signature")
 
     try:
-        body = json.loads(raw_body.decode("utf-8"))
+        body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
     except Exception:
         return {"status": "ignored"}
 
@@ -246,7 +268,7 @@ async def razorpay_webhook(request: Request):
         order_id = entity.get("reference_id") or entity.get("order_id")
         if order_id:
             await db.execute(
-                "UPDATE coexistence.orders SET payment_status = 'paid', updated_at = NOW() WHERE order_number = $1 OR id::text = $1",
+                "UPDATE coexistence.orders SET status = 'paid', updated_at = NOW() WHERE order_number = $1 OR id::text = $1",
                 str(order_id)
             )
 
@@ -258,6 +280,16 @@ async def razorpay_webhook(request: Request):
 @router.post("/logistics/webhook")
 @router.post("/tracking/webhook")
 async def shiprocket_webhook(request: Request):
+    token_secret = os.getenv("SHIPROCKET_WEBHOOK_TOKEN") or os.getenv("LOGISTICS_WEBHOOK_SECRET")
+    if token_secret:
+        inbound_token = (
+            request.headers.get("x-api-key")
+            or request.headers.get("x-shiprocket-token")
+            or request.query_params.get("token")
+        )
+        if not inbound_token or not hmac.compare_digest(token_secret, inbound_token):
+            raise HTTPException(status_code=401, detail="Unauthorized logistics webhook")
+
     try:
         body = await request.json()
     except Exception:
@@ -272,8 +304,8 @@ async def shiprocket_webhook(request: Request):
         await db.execute(
             """
             UPDATE coexistence.orders
-            SET fulfillment_status = COALESCE($1, fulfillment_status),
-                courier_partner = COALESCE($2, courier_partner),
+            SET status = COALESCE($1, status),
+                courier = COALESCE($2, courier),
                 tracking_number = COALESCE($3, tracking_number),
                 updated_at = NOW()
             WHERE order_number = $4 OR tracking_number = $3

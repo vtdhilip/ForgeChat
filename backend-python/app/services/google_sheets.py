@@ -8,6 +8,7 @@ import httpx
 from app.core.config import settings
 from app.services.google_auth import get_access_token
 from app.services.product_catalog import resolve_product_name
+from app.util.url_validator import is_safe_external_url
 
 logger = logging.getLogger(__name__)
 
@@ -348,6 +349,10 @@ async def append_order_to_google_sheet(order: Dict[str, Any]) -> bool:
     if not webhook_url:
         return False
 
+    if not is_safe_external_url(webhook_url, allow_http=False):
+        logger.warning(f"[googleSheets] Blocked unsafe Google Sheets webhook URL: {webhook_url}")
+        return False
+
     try:
         product_formatted = await format_product_items(order.get("product"), order.get("items"))
         payload = {
@@ -386,6 +391,10 @@ async def update_order_payment_in_google_sheet(
 ) -> bool:
     webhook_url = settings.GOOGLE_SHEET_WEBHOOK_URL or settings.GOOGLE_SHEETS_WEBHOOK_URL
     if not webhook_url:
+        return False
+
+    if not is_safe_external_url(webhook_url, allow_http=False):
+        logger.warning(f"[googleSheets] Blocked unsafe Google Sheets webhook URL: {webhook_url}")
         return False
 
     try:

@@ -1,8 +1,10 @@
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.core.database import db
-from app.middleware.auth import get_current_user, require_admin, is_admin_user, audit_log
+from app.middleware.auth import get_current_user, require_permission, is_admin_user, audit_log
 
 router = APIRouter(prefix="/api", tags=["Pipelines & Deals"])
 
@@ -145,7 +147,7 @@ async def list_pipelines(user: dict = Depends(get_current_user)):
     return [pipeline_shape(dict(p), by_pipe.get(p["id"], [])) for p in pipes]
 
 @router.post("/pipelines", status_code=201)
-async def create_pipeline(payload: PipelineCreate, admin: dict = Depends(require_admin)):
+async def create_pipeline(payload: PipelineCreate, admin: dict = Depends(require_permission("pipelines"))):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Pipeline name is required")
@@ -177,7 +179,7 @@ async def create_pipeline(payload: PipelineCreate, admin: dict = Depends(require
     return pipeline_shape(dict(pipe), [dict(s) for s in stages])
 
 @router.put("/pipelines/{pipeline_id}")
-async def update_pipeline(pipeline_id: int, payload: PipelineUpdate, admin: dict = Depends(require_admin)):
+async def update_pipeline(pipeline_id: int, payload: PipelineUpdate, admin: dict = Depends(require_permission("pipelines"))):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Pipeline name is required")
@@ -190,7 +192,7 @@ async def update_pipeline(pipeline_id: int, payload: PipelineUpdate, admin: dict
     return pipeline_shape(dict(row))
 
 @router.delete("/pipelines/{pipeline_id}")
-async def delete_pipeline(pipeline_id: int, admin: dict = Depends(require_admin)):
+async def delete_pipeline(pipeline_id: int, admin: dict = Depends(require_permission("pipelines"))):
     cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.pipelines")
     if cnt and cnt <= 1:
         raise HTTPException(status_code=409, detail="Cannot delete the only pipeline. Create another first.")
@@ -203,7 +205,7 @@ async def delete_pipeline(pipeline_id: int, admin: dict = Depends(require_admin)
 # --- Stages Routes ---
 
 @router.post("/pipelines/{pipeline_id}/stages", status_code=201)
-async def add_stage(pipeline_id: int, payload: StageCreate, admin: dict = Depends(require_admin)):
+async def add_stage(pipeline_id: int, payload: StageCreate, admin: dict = Depends(require_permission("pipelines"))):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Stage name is required")
@@ -225,7 +227,7 @@ async def add_stage(pipeline_id: int, payload: StageCreate, admin: dict = Depend
     return stage_shape(dict(row))
 
 @router.put("/stages/{stage_id}")
-async def update_stage(stage_id: int, payload: StageUpdate, admin: dict = Depends(require_admin)):
+async def update_stage(stage_id: int, payload: StageUpdate, admin: dict = Depends(require_permission("pipelines"))):
     sets = ["updated_at = NOW()"]
     params = [stage_id]
     if payload.name is not None:
@@ -251,7 +253,7 @@ async def update_stage(stage_id: int, payload: StageUpdate, admin: dict = Depend
     return stage_shape(dict(row))
 
 @router.delete("/stages/{stage_id}")
-async def delete_stage(stage_id: int, admin: dict = Depends(require_admin)):
+async def delete_stage(stage_id: int, admin: dict = Depends(require_permission("pipelines"))):
     deal_cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.deals WHERE stage_id = $1", stage_id)
     if deal_cnt and deal_cnt > 0:
         raise HTTPException(status_code=409, detail="Move or delete the deals in this stage first.")
@@ -263,7 +265,7 @@ async def delete_stage(stage_id: int, admin: dict = Depends(require_admin)):
 # --- Deals Routes ---
 
 @router.get("/deals/contact-search")
-async def contact_search(q: Optional[str] = "", admin: dict = Depends(require_admin)):
+async def contact_search(q: Optional[str] = "", admin: dict = Depends(require_permission("pipelines"))):
     query_str = (q or "").strip()
     if not query_str:
         return []
@@ -332,7 +334,7 @@ async def list_deals(pipelineId: int = Query(...), user: dict = Depends(get_curr
     return [deal_shape(dict(r)) for r in rows]
 
 @router.post("/deals", status_code=201)
-async def create_deal(payload: DealCreate, admin: dict = Depends(require_admin)):
+async def create_deal(payload: DealCreate, admin: dict = Depends(require_permission("pipelines"))):
     title = payload.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Deal title is required")
@@ -392,7 +394,7 @@ async def create_deal(payload: DealCreate, admin: dict = Depends(require_admin))
     return deal_shape(created)
 
 @router.put("/deals/{deal_id}")
-async def update_deal(deal_id: int, payload: DealUpdate, admin: dict = Depends(require_admin)):
+async def update_deal(deal_id: int, payload: DealUpdate, admin: dict = Depends(require_permission("pipelines"))):
     ex = await db.fetchrow("SELECT * FROM coexistence.deals WHERE id = $1", deal_id)
     if not ex:
         raise HTTPException(status_code=404, detail="Deal not found")
@@ -492,7 +494,7 @@ async def move_deal(deal_id: int, payload: DealMove, user: dict = Depends(get_cu
     return deal_shape(dict(row))
 
 @router.delete("/deals/{deal_id}")
-async def delete_deal(deal_id: int, admin: dict = Depends(require_admin)):
+async def delete_deal(deal_id: int, admin: dict = Depends(require_permission("pipelines"))):
     res = await db.execute("DELETE FROM coexistence.deals WHERE id = $1", deal_id)
     if res.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Deal not found")

@@ -1,18 +1,19 @@
 import time
-import random
+import secrets
 import os
+import re
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.core.database import db
-from app.middleware.auth import require_permission, get_current_user
+from app.middleware.auth import require_permission, get_current_user, require_admin
 from app.services.product_catalog import sync_products_from_shopify
 
 router = APIRouter(prefix="/api", tags=["Categories & Tags"])
 
 def gen_id(prefix: str) -> str:
     now_ms = int(time.time() * 1000)
-    rand = random.randint(0, 9999)
+    rand = secrets.randbelow(10000)
     return f"{prefix}-{now_ms}-{rand}"
 
 # --- Models ---
@@ -155,11 +156,23 @@ async def delete_tag(tag_id: str, user: dict = Depends(require_permission("admin
 # --- Shopify Sync ---
 
 @router.post("/products/sync-shopify")
-async def sync_shopify_catalog(payload: Optional[ShopifySyncRequest] = None, user: dict = Depends(get_current_user)):
-    domain = (payload.domain if payload else None) or os.getenv("SHOPIFY_STORE_DOMAIN")
-    access_token = (payload.accessToken if payload else None) or os.getenv("SHOPIFY_ADMIN_API_ACCESS_TOKEN")
+async def sync_shopify_catalog(payload: Optional[ShopifySyncRequest] = None, admin: dict = Depends(require_admin)):
+    configured_domain = os.getenv("SHOPIFY_STORE_DOMAIN", "")
+    domain = (payload.domain if payload and payload.domain else None) or configured_domain
     if not domain:
         raise HTTPException(status_code=400, detail="Shopify domain is required (e.g. your-shop.myshopify.com)")
-    
-    count = await sync_products_from_shopify(domain, access_token)
-    return {"ok": True, "domain": domain, "syncedVariants": count}
+
+    clean_domain = re.sub(r"^https?://", "", domain).split("/")[0].strip().lower()
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$", clean_domain):
+        raise HTTPException(status_code=400, detail="Invalid Shopify domain. Must be a valid subdomain of myshopify.com")
+
+    # If domain differs from configured domain, user must provide custom accessToken; never leak server env token
+    if payload and payload.accessToken:
+        access_token = payload.accessToken
+    elif clean_domain == configured_domain.lower():
+        access_token = os.getenv("SHOPIFY_ADMIN_API_ACCESS_TOKEN")
+    else:
+        access_token = None
+
+    count = await sync_products_from_shopify(clean_domain, access_token)
+    return {"ok": True, "domain": clean_domain, "syncedVariants": count}

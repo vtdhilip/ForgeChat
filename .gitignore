@@ -17,6 +17,7 @@ build/
 **/.env
 !.env.example
 !**/.env.example
+litellm_config.yaml
 # First-run generated admin credential (written by the backend on first boot)
 .admin-password
 **/.admin-password
@@ -56,6 +57,12 @@ coverage/
 *.bak
 /tmp/
 scratch/
+shannon/
+shannon-config.yaml
+run-shannon.sh
+
+
+
 
 # Legacy reference / scratch files at repo root (not imported by the app — see LLD.md)
 # Root-level JSX only; frontend/src/**/*.jsx is real source and stays tracked.

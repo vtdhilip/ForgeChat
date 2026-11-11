@@ -22,8 +22,11 @@ async def ensure_product_table():
 async def sync_products_from_shopify(domain: str, access_token: Optional[str] = None) -> int:
     if not domain:
         return 0
+    clean_domain = re.sub(r"^https?://", "", domain).split("/")[0].strip().lower()
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$", clean_domain):
+        print(f"[productCatalog] Rejected invalid/non-Shopify domain: {clean_domain}")
+        return 0
     await ensure_product_table()
-    clean_domain = re.sub(r"^https?://", "", domain).split("/")[0].strip()
     count = 0
 
     async with httpx.AsyncClient(timeout=15.0) as client:

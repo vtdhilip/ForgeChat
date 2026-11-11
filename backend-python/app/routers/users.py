@@ -1,4 +1,4 @@
-import random
+import secrets
 import re
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, EmailStr
@@ -14,7 +14,7 @@ VALID_ROLES = set(ROLE_PAGE_DEFAULTS.keys())
 
 def generate_password(length: int = 12) -> str:
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
-    return ''.join(random.choice(alphabet) for _ in range(length))
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def shape_user(row: dict, wa_assignments: List[str] = None) -> dict:
     return {
@@ -81,6 +81,16 @@ async def get_user(user_id: int, user: dict = Depends(require_admin)):
 
 @router.post("")
 async def create_user(payload: UserCreate, admin: dict = Depends(require_admin)):
+    username = payload.username.strip()
+    if not username or len(username) > 64:
+        raise HTTPException(status_code=400, detail="Username must be between 1 and 64 characters")
+    email = payload.email.strip().lower()
+    if not email or len(email) > 255 or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email is required (max 255 characters)")
+    display_name = payload.displayName.strip()
+    if not display_name or len(display_name) > 128:
+        raise HTTPException(status_code=400, detail="Display name must be between 1 and 128 characters")
+
     if payload.role and payload.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(VALID_ROLES)}")
 
@@ -96,10 +106,10 @@ async def create_user(payload: UserCreate, admin: dict = Depends(require_admin))
                 VALUES ($1, LOWER($2), $3, $4, $5, $6, $7)
                 RETURNING *
                 """,
-                payload.username.strip(),
-                payload.email.strip(),
+                username,
+                email,
                 hashed_pw,
-                payload.displayName.strip(),
+                display_name,
                 payload.role or "bda_sales",
                 payload.permissions,
                 admin["id"]
@@ -131,11 +141,17 @@ async def update_user(user_id: int, payload: UserUpdate, admin: dict = Depends(r
     params = [user_id]
 
     if payload.displayName is not None:
-        params.append(payload.displayName.strip())
+        dn = payload.displayName.strip()
+        if not dn or len(dn) > 128:
+            raise HTTPException(status_code=400, detail="Display name must be between 1 and 128 characters")
+        params.append(dn)
         updates.append(f"display_name = ${len(params)}")
 
     if payload.email is not None:
-        params.append(payload.email.strip().lower())
+        em = payload.email.strip().lower()
+        if not em or len(em) > 255 or "@" not in em:
+            raise HTTPException(status_code=400, detail="Valid email is required (max 255 characters)")
+        params.append(em)
         updates.append(f"email = ${len(params)}")
 
     if payload.role is not None:
