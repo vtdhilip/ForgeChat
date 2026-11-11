@@ -6,6 +6,20 @@ const { isAdmin } = require('../permissions');
 
 const router = Router();
 
+const ORG_LIMIT_ERROR = 'Only one WhatsApp Business account is allowed per organization. Edit the existing account instead.';
+const PHONE_DUP_ERROR = 'This Phone Number ID is already connected';
+
+function uniqueViolationMessage(err) {
+  const constraint = String(err?.constraint || '').toLowerCase();
+  if (constraint.includes('one_per_org') || constraint.includes('one_default') || constraint.includes('singleton')) {
+    return ORG_LIMIT_ERROR;
+  }
+  if (constraint.includes('phone_number_id') || String(err?.message || '').toLowerCase().includes('phone_number_id')) {
+    return PHONE_DUP_ERROR;
+  }
+  return ORG_LIMIT_ERROR;
+}
+
 /**
  * Look up a phone number's human-readable number + verified business name from
  * the Meta Graph API. The simplified connection form no longer asks the user to
@@ -130,7 +144,7 @@ router.post('/whatsapp-accounts', adminOnly, async (req, res) => {
         [orgId]
       );
       if (existing[0].n >= 1) {
-        return res.status(409).json({ error: 'Only one WhatsApp Business account is allowed per organization. Edit the existing account instead.' });
+        return res.status(409).json({ error: ORG_LIMIT_ERROR });
       }
     }
 
@@ -175,7 +189,7 @@ router.post('/whatsapp-accounts', adminOnly, async (req, res) => {
       client.release();
     }
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'This Phone Number ID is already connected' });
+    if (err.code === '23505') return res.status(409).json({ error: uniqueViolationMessage(err) });
     console.error('[whatsapp-accounts] create error:', err.message);
     res.status(500).json({ error: 'Failed to create WhatsApp Business account' });
   }
@@ -252,7 +266,7 @@ router.put('/whatsapp-accounts/:id', adminOnly, async (req, res) => {
       client.release();
     }
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'This Phone Number ID is already connected' });
+    if (err.code === '23505') return res.status(409).json({ error: uniqueViolationMessage(err) });
     console.error('[whatsapp-accounts] update error:', err.message);
     res.status(500).json({ error: 'Failed to update WhatsApp Business account' });
   }

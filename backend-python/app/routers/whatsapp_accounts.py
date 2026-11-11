@@ -9,6 +9,23 @@ from app.services.whatsapp_service import fetch_phone_meta, get_account_by_phone
 
 router = APIRouter(prefix="/api/whatsapp-accounts", tags=["WhatsApp Accounts"])
 
+ORG_LIMIT_DETAIL = "Only one WhatsApp Business account is allowed per organization. Edit the existing account instead."
+PHONE_DUP_DETAIL = "This Phone Number ID is already connected"
+
+
+def _unique_violation_detail(err: Exception) -> Optional[str]:
+    """Map PostgreSQL unique_violation errors to an accurate 409 detail message."""
+    err_str = str(err)
+    is_unique = getattr(err, "sqlstate", None) == "23505" or "23505" in err_str or "unique" in err_str.lower()
+    if not is_unique:
+        return None
+    constraint = (getattr(err, "constraint_name", None) or "").lower()
+    if "one_per_org" in constraint or "one_default" in constraint or "singleton" in constraint:
+        return ORG_LIMIT_DETAIL
+    if "phone_number_id" in constraint or "phone_number_id" in err_str.lower():
+        return PHONE_DUP_DETAIL
+    return ORG_LIMIT_DETAIL
+
 def public_shape(row: dict, include_secrets: bool = False) -> Optional[dict]:
     if not row:
         return None
@@ -117,7 +134,7 @@ async def create_account(
     if org_id:
         existing = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.whatsapp_accounts WHERE org_id = $1", org_id)
         if existing and existing >= 1:
-            raise HTTPException(status_code=409, detail="Only one WhatsApp Business account is allowed per organization. Edit the existing account instead.")
+            raise HTTPException(status_code=409, detail=ORG_LIMIT_DETAIL)
 
     display_name = f"WhatsApp {waba_id}"
     display_phone_number = ""
@@ -150,8 +167,9 @@ async def create_account(
             enc_token, enc_verify, org_id
         )
     except Exception as err:
-        if "unique" in str(err).lower() or "23505" in str(err):
-            raise HTTPException(status_code=409, detail="This Phone Number ID is already connected")
+        detail = _unique_violation_detail(err)
+        if detail:
+            raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=500, detail="Failed to create WhatsApp Business account")
 
     return public_shape(dict(row), include_secrets=True)
@@ -229,8 +247,9 @@ async def update_account(
     try:
         updated_row = await db.fetchrow(query, *params)
     except Exception as err:
-        if "unique" in str(err).lower() or "23505" in str(err):
-            raise HTTPException(status_code=409, detail="This Phone Number ID is already connected")
+        detail = _unique_violation_detail(err)
+        if detail:
+            raise HTTPException(status_code=409, detail=detail)
         raise HTTPException(status_code=500, detail="Failed to update WhatsApp Business account")
 
     return public_shape(dict(updated_row), include_secrets=True)
