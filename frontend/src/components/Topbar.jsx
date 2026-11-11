@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { LogOut, Settings, AlertTriangle } from 'lucide-react';
-import { C, FONT } from '../constants.js';
+import { C, FONT, isOrgAdmin, isSuperAdmin } from '../constants.js';
 import { api } from '../api.js';
 
 export default function Topbar({ user, onLogout, onNavigate }) {
@@ -159,10 +159,10 @@ export default function Topbar({ user, onLogout, onNavigate }) {
                   {user.displayName || user.username}
                 </div>
                 <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                  {user.role === 'admin' ? 'Super Admin' : 'Member'}
+                  {isSuperAdmin(user) ? 'Super Admin' : isOrgAdmin(user) ? 'Org Admin' : 'Member'}
                 </div>
               </div>
-              {user.role === 'admin' && (
+              {isSuperAdmin(user) && (
                 <button
                   onClick={() => { setUserOpen(false); onNavigate('super-admin'); }}
                   style={{

@@ -2644,7 +2644,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
                         <option value="">— Select user ({filtered.length} match) —</option>
                         {filtered.map(u => (
                           <option key={u.id} value={String(u.id)}>
-                            {u.displayName} · {u.role === 'admin' ? 'Admin' : 'BDA Sales'}{u.email ? ` · ${u.email}` : ''}
+                            {u.displayName} · {u.role === 'admin' ? 'Super Admin' : u.role === 'org_admin' ? 'Org Admin' : 'BDA Sales'}{u.email ? ` · ${u.email}` : ''}
                           </option>
                         ))}
                       </Select>
@@ -3687,7 +3687,7 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
         setContactFields(cFields || []);
         setOtherAutomations((flows || []).filter(f => f.id !== automation?.id));
         setWhatsappAccounts(accs || []);
-        setAssignableUsers((usrs || []).filter(u => u.isActive !== false && (u.role === 'bda_sales' || u.role === 'admin')));
+        setAssignableUsers((usrs || []).filter(u => u.isActive !== false && (u.role === 'bda_sales' || u.role === 'org_admin' || u.role === 'admin')));
 
         // Sample contacts for the Condition node's "Test with a sample contact".
         // Non-fatal: if it fails the selector just shows "no contacts available".

@@ -4,7 +4,7 @@ import {
   BarChart3, Wallet, Target, TrendingUp, Trophy, XCircle, Check, GripVertical,
 } from 'lucide-react';
 import { api } from '../api.js';
-import { C, FONT, MONO, maskPhone } from '../constants.js';
+import { C, FONT, MONO, maskPhone, isOrgAdmin } from '../constants.js';
 import SearchableSelect from '../components/SearchableSelect.jsx';
 
 /* --------------------------------- helpers -------------------------------- */
@@ -16,7 +16,7 @@ const COLUMN_W = 300;
 
 /* ============================== main page ================================= */
 export default function PipelinesPage({ user }) {
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = isOrgAdmin(user);
 
   const [pipelines, setPipelines] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -425,7 +425,7 @@ function DealModal({ deal, defaultStageId, pipeline, stages, isAdmin, onClose, o
             <SearchableSelect
               value={form.assignedUserId || ''}
               onChange={(val) => setForm({ ...form, assignedUserId: val ? Number(val) : '' })}
-              options={[{ value: '', label: 'Unassigned' }, ...users.map(u => ({ value: String(u.id), label: `${u.displayName || u.username}${u.role === 'admin' ? ' (admin)' : ''}` }))]}
+              options={[{ value: '', label: 'Unassigned' }, ...users.map(u => ({ value: String(u.id), label: `${u.displayName || u.username}${u.role === 'admin' || u.role === 'org_admin' ? ' (admin)' : ''}` }))]}
               placeholder="Unassigned"
               searchPlaceholder="Search users…"
             />

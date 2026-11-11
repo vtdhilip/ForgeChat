@@ -21,6 +21,14 @@ MODULE_TO_PAGE = {
 
 ROLE_PAGE_DEFAULTS = {
     'admin': list(PAGES),
+    'org_admin': [
+        'home', 'chats', 'contacts', 'pipelines', 'bulk-message',
+        'template-builder', 'chatbot-builder', 'ai-agent-builder',
+        'media-library', 'about',
+        'admin-settings:general', 'admin-settings:tags',
+        'admin-settings:category', 'admin-settings:fields',
+        'admin-settings:users',
+    ],
     'bda_sales': [
         'home', 'chats', 'contacts', 'pipelines', 'about',
         'admin-settings:general',

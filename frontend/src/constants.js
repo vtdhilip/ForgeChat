@@ -117,3 +117,16 @@ export function formatDate(ts) {
   if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 }
+
+export function isSuperAdmin(user) {
+  return user?.role === 'admin';
+}
+
+export function isOrgAdmin(user) {
+  return (
+    user?.role === 'admin'
+    || user?.role === 'org_admin'
+    || user?.orgRole === 'owner'
+    || user?.orgRole === 'admin'
+  );
+}

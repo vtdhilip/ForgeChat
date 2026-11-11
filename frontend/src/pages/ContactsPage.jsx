@@ -5,11 +5,11 @@ import WhatsAppPreview, { BroadcastMessagePreview } from '../components/WhatsApp
 import TagMultiSelect from '../components/TagMultiSelect.jsx';
 import { CustomFieldEditor, CustomFieldView } from '../components/CustomFieldInputs.jsx';
 import { api } from '../api.js';
-import { C, FONT, MONO, maskPhone, darkenColor } from '../constants.js';
+import { C, FONT, MONO, maskPhone, darkenColor, isOrgAdmin } from '../constants.js';
 import MaskedNumber from '../components/MaskedNumber.jsx';
 import SearchableSelect from '../components/SearchableSelect.jsx';
 
-const ROLE_LABEL_MAP = { admin: 'Admin', bda_sales: 'Sales', viewer: 'Viewer' };
+const ROLE_LABEL_MAP = { admin: 'Super Admin', org_admin: 'Org Admin', bda_sales: 'Sales', viewer: 'Viewer' };
 
 function TagBadge({ tag, onRemove }) {
   return (
@@ -36,7 +36,7 @@ function TagBadge({ tag, onRemove }) {
 }
 
 export default function ContactsPage({ user, onNavigate }) {
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = isOrgAdmin(user);
   const [numbers, setNumbers] = useState([]);
   const [selectedNumber, setSelectedNumber] = useState(null);
   const [contacts, setContacts] = useState([]);
@@ -130,7 +130,7 @@ export default function ContactsPage({ user, onNavigate }) {
       setFieldDefs(flds);
     });
     // Admins can assign contacts to other users — load the assignable list.
-    if (user?.role === 'admin') {
+    if (isOrgAdmin(user)) {
       api.users.list().then(setUsers).catch(() => setUsers([]));
     }
   }, [user]);

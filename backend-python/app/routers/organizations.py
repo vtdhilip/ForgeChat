@@ -108,8 +108,10 @@ async def super_admin_onboard(payload: OnboardRequest, user: dict = Depends(requ
                 user_row = await conn.fetchrow(
                     """
                     INSERT INTO coexistence.forgecrm_users (username, email, password, display_name, role)
-                    VALUES ($1, $2, $3, $4, 'bda_sales')
-                    ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
+                    VALUES ($1, $2, $3, $4, 'org_admin')
+                    ON CONFLICT (email) DO UPDATE SET
+                      display_name = EXCLUDED.display_name,
+                      role = CASE WHEN coexistence.forgecrm_users.role = 'admin' THEN 'admin' ELSE 'org_admin' END
                     RETURNING id
                     """,
                     payload.adminUsername.strip(),

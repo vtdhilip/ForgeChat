@@ -1,7 +1,7 @@
 from fastapi import Request, HTTPException, status, Depends
 from typing import Dict, Any, Callable, Optional
 from app.core.database import db
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, is_tenant_admin
 
 class TenantContext:
     def __init__(self, org_id: str, org_role: str, org: Dict[str, Any], user: Optional[Dict[str, Any]] = None):
@@ -123,3 +123,11 @@ def require_org_role(*allowed_roles: str) -> Callable:
             )
         return ctx
     return dependency
+
+async def require_org_admin(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
+    if not is_tenant_admin(ctx.user, ctx):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization admin privileges required"
+        )
+    return ctx

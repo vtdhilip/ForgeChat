@@ -115,7 +115,8 @@ def is_admin_user(user: Dict[str, Any]) -> bool:
     return user.get("role") == "admin"
 
 def is_tenant_admin(user: Optional[Dict[str, Any]], tenant_ctx: Optional[Any] = None) -> bool:
-    if is_admin_user(user or {}):
+    u = user or {}
+    if u.get("role") in ("admin", "org_admin"):
         return True
     if tenant_ctx is not None:
         org_role = tenant_ctx.get("org_role") if hasattr(tenant_ctx, "get") else getattr(tenant_ctx, "org_role", None)

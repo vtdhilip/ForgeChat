@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Save, Trash2, Loader2, AlertCircle, ExternalLink, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import { api } from '../../api.js';
-import { C, FONT, MONO, downloadJson, slugifyName } from '../../constants.js';
+import { C, FONT, MONO, downloadJson, slugifyName, isOrgAdmin } from '../../constants.js';
 import DeleteConfirmModal from '../DeleteConfirmModal.jsx';
 import SearchableSelect from '../SearchableSelect.jsx';
 import InfoDot from '../InfoDot.jsx';
@@ -252,7 +252,7 @@ export default function AgentEditor({ agentId, waAccounts, user, navigate, onDon
     );
   }
 
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = isOrgAdmin(user);
 
   return (
     <div style={{ padding: '24px 24px 80px', width: '100%', boxSizing: 'border-box', fontFamily: FONT }}>

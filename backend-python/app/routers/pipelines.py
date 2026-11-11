@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.core.database import db
-from app.middleware.auth import get_current_user, require_permission, is_admin_user, audit_log
+from app.middleware.auth import get_current_user, require_permission, is_tenant_admin, audit_log
+from app.middleware.tenant import get_tenant_context
 
 router = APIRouter(prefix="/api", tags=["Pipelines & Deals"])
 
@@ -286,10 +287,11 @@ async def contact_search(q: Optional[str] = "", admin: dict = Depends(require_pe
     return [{"waNumber": r["wa_number"], "contactNumber": r["contact_number"], "name": r["name"]} for r in rows]
 
 @router.get("/deals/metrics")
-async def get_deal_metrics(pipelineId: int = Query(...), user: dict = Depends(get_current_user)):
+async def get_deal_metrics(pipelineId: int = Query(...), tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
     params = [pipelineId]
     scope = ""
-    if not is_admin_user(user):
+    if not is_tenant_admin(user, tenant_ctx):
         params.append(user["id"])
         scope = f"AND d.assigned_user_id = ${len(params)}"
 
@@ -316,10 +318,11 @@ async def get_deal_metrics(pipelineId: int = Query(...), user: dict = Depends(ge
     }
 
 @router.get("/deals")
-async def list_deals(pipelineId: int = Query(...), user: dict = Depends(get_current_user)):
+async def list_deals(pipelineId: int = Query(...), tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
     params = [pipelineId]
     scope = ""
-    if not is_admin_user(user):
+    if not is_tenant_admin(user, tenant_ctx):
         params.append(user["id"])
         scope = f"AND d.assigned_user_id = ${len(params)}"
 
@@ -467,12 +470,13 @@ async def update_deal(deal_id: int, payload: DealUpdate, admin: dict = Depends(r
     return deal_shape(updated)
 
 @router.post("/deals/{deal_id}/move")
-async def move_deal(deal_id: int, payload: DealMove, user: dict = Depends(get_current_user)):
+async def move_deal(deal_id: int, payload: DealMove, tenant_ctx: dict = Depends(get_tenant_context)):
+    user = tenant_ctx["user"]
     ex = await db.fetchrow("SELECT * FROM coexistence.deals WHERE id = $1", deal_id)
     if not ex:
         raise HTTPException(status_code=404, detail="Deal not found")
 
-    if not is_admin_user(user) and ex.get("assigned_user_id") != user["id"]:
+    if not is_tenant_admin(user, tenant_ctx) and ex.get("assigned_user_id") != user["id"]:
         raise HTTPException(status_code=403, detail="You can only move deals assigned to you")
 
     stage = await get_stage_in_pipeline(payload.stageId, ex["pipeline_id"])

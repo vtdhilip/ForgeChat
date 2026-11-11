@@ -7,7 +7,7 @@ import {
   PlugZap, Terminal, ChevronRight,
 } from 'lucide-react';
 import { api } from '../api.js';
-import { C, FONT, MONO, maskPhone } from '../constants.js';
+import { C, FONT, MONO, maskPhone, isSuperAdmin } from '../constants.js';
 import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
 import SearchableSelect from '../components/SearchableSelect.jsx';
 import IntegrationsTab from '../components/settings/IntegrationsTab.jsx';
@@ -24,12 +24,15 @@ const TABS = [
   { key: 'users', label: 'Users', icon: UsersIcon },
 ];
 
-// Two roles ship today: admin (full access) and bda_sales (labelled "Sales").
+// Org admins manage org_admin / bda_sales / viewer inside their workspace;
+// only super admins (role='admin') can assign the platform 'admin' role.
 const ROLE_OPTIONS = [
-  { value: 'admin', label: 'Admin' },
+  { value: 'admin', label: 'Super Admin' },
+  { value: 'org_admin', label: 'Org Admin' },
   { value: 'bda_sales', label: 'Sales' },
+  { value: 'viewer', label: 'Viewer' },
 ];
-const ROLE_LABEL = { admin: 'Admin', bda_sales: 'Sales', viewer: 'Viewer' };
+const ROLE_LABEL = { admin: 'Super Admin', org_admin: 'Org Admin', bda_sales: 'Sales', viewer: 'Viewer' };
 
 const FIELD_TYPE_OPTIONS = [
   { value: 'text', label: 'Text' },
@@ -1235,7 +1238,7 @@ function FieldsTab({ fields, onRefresh }) {
 /*  Users (admin-only multi-user management)                           */
 /* ------------------------------------------------------------------ */
 function RoleBadge({ role }) {
-  const isAdmin = role === 'admin';
+  const isAdmin = role === 'admin' || role === 'org_admin';
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -1445,7 +1448,7 @@ function UsersTab({ currentUser }) {
                 <SearchableSelect
                   value={form.role}
                   onChange={(val) => setForm({ ...form, role: val })}
-                  options={ROLE_OPTIONS.map(r => ({ value: String(r.value), label: r.label }))}
+                  options={(isSuperAdmin(currentUser) ? ROLE_OPTIONS : ROLE_OPTIONS.filter(r => r.value !== 'admin')).map(r => ({ value: String(r.value), label: r.label }))}
                   triggerStyle={{ padding: '10px 32px 10px 12px', fontSize: 14 }}
                 />
 
