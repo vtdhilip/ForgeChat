@@ -75,6 +75,12 @@ transform.js
 .cursor/
 .continue/
 .aider*
+.agents/
+.mcp.json
+agent/
+skills-lock.json
+models.json
+litellm_config.yaml.save
 
 # Backups
 *.dump

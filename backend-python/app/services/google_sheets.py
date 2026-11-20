@@ -314,7 +314,7 @@ async def format_product_items(product: Any, items: Any) -> str:
 
     raw = items or product
     if not raw:
-        return "1x LINNDEN Premium Modal Trunks"
+        return "1x Order Item"
 
     if isinstance(raw, str):
         try:
@@ -335,14 +335,14 @@ async def format_product_items(product: Any, items: Any) -> str:
                     try:
                         name = await resolve_product_name(it["product_retailer_id"])
                     except Exception:
-                        name = "LINNDEN Premium Modal Trunks"
+                        name = f"Item {it['product_retailer_id']}"
             if not name or name.isdigit():
-                name = "LINNDEN Premium Modal Trunks"
+                name = "Order Item"
             price = f" (₹{it.get('item_price') or it.get('price')})" if (it.get("item_price") or it.get("price")) else ""
             parts.append(f"{qty}x {name}{price}")
         return ", ".join(parts)
 
-    return "1x LINNDEN Premium Modal Trunks"
+    return "1x Order Item"
 
 async def append_order_to_google_sheet(order: Dict[str, Any]) -> bool:
     webhook_url = settings.GOOGLE_SHEET_WEBHOOK_URL or settings.GOOGLE_SHEETS_WEBHOOK_URL

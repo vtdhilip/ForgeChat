@@ -5,9 +5,9 @@ from app.core.events import bus
 
 logger = logging.getLogger(__name__)
 
-def emit(event: str, payload: dict):
+async def emit(event: str, payload: dict):
     try:
-        bus.emit(event, payload)
+        await bus.emit(event, payload)
     except Exception as e:
         logger.warning(f"Error emitting event {event}: {e}")
 
@@ -70,14 +70,14 @@ async def perform_handoff(
             assigned_user_id,
         )
 
-    emit("contact-saved", {"waNumber": wa_number, "contactNumber": contact_number})
+    await emit("contact-saved", {"waNumber": wa_number, "contactNumber": contact_number})
     if assigned_user_id:
-        emit("contact-assignment-changed", {
+        await emit("contact-assignment-changed", {
             "waNumber": wa_number,
             "contactNumber": contact_number,
             "assignedUserId": assigned_user_id,
         })
-    emit("agent-handoff", {
+    await emit("agent-handoff", {
         "waNumber": wa_number,
         "contactNumber": contact_number,
         "assignedUserId": assigned_user_id,
@@ -103,7 +103,7 @@ async def resume_agent(wa_number: str, contact_number: str, by: Optional[str] = 
             wa_number,
             contact_number,
         )
-    emit("agent-resumed", {"waNumber": wa_number, "contactNumber": contact_number, "by": by})
+    await emit("agent-resumed", {"waNumber": wa_number, "contactNumber": contact_number, "by": by})
     return {"ok": True}
 
 async def is_conversation_paused(wa_number: str, contact_number: str) -> bool:

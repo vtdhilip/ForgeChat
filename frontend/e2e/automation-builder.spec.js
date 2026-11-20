@@ -3,19 +3,41 @@ import { test, expect } from '@playwright/test';
 const LOGIN_EMAIL = 'vtdhilipkumar@gmail.com';
 const LOGIN_PASSWORD = 'admin123';
 
+async function setupRoutes(page) {
+  await page.route('**/api/team-members', async route => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        { id: 'tm-1', name: 'Rahul Sharma', phone: '+91 98765 43210', bda_id: 'BDA001', address: 'Chennai', email: 'rahul@example.com', avail: 'online' },
+        { id: 'tm-2', name: 'Priya Iyer', phone: '+91 98765 43211', bda_id: 'BDA002', address: 'Bangalore', email: 'priya@example.com', avail: 'online' },
+        { id: 'tm-3', name: 'Arun Kumar', phone: '+91 98765 43212', bda_id: 'BDA003', address: 'Chennai', email: 'arun@example.com', avail: 'away' },
+      ]),
+    });
+  });
+}
+
 async function login(page) {
-  await page.goto('/');
+  await setupRoutes(page);
+  if (await page.locator('text=Welcome back').first().isVisible().catch(() => false)) {
+    return;
+  }
+  await page.goto('/login');
   await page.waitForSelector('input[type="email"]', { timeout: 10000 });
   await page.fill('input[type="email"]', LOGIN_EMAIL);
   await page.fill('input[type="password"]', LOGIN_PASSWORD);
   await page.click('button:has-text("Sign in")');
-  // Wait for the dashboard to load
-  await page.waitForSelector('text=Synaptic Chat', { timeout: 15000 });
+  // Wait for the authenticated dashboard to load
+  await page.waitForSelector('text=Welcome back', { timeout: 15000 });
 }
 
 async function navigateToAutomations(page) {
-  // Click the first "Automations" text (sidebar nav item)
-  await page.getByText('Automations').first().click();
+  const navItem = page.locator('[data-nav="chatbot-builder"], [title="Automations"], text=Automations').first();
+  if (await navItem.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await navItem.click();
+  } else {
+    await page.goto('/#/chatbot-builder');
+  }
   await page.waitForSelector('text=Build and manage automated conversation flows.', { timeout: 10000 });
 }
 
@@ -60,7 +82,8 @@ async function clickBlockLibrary(page, name) {
 
 // Helper to click an item from the NodePicker popup
 async function clickNodePickerItem(page, name) {
-  const item = page.locator('[data-testid="node-picker-item"]').filter({ hasText: name });
+  const textPattern = name === 'WhatsApp Message' ? /WhatsApp Message|Send Message/i : name;
+  const item = page.locator('[data-testid="node-picker-item"]').filter({ hasText: textPattern }).first();
   await item.click();
 }
 

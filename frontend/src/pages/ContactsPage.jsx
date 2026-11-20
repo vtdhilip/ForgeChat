@@ -8,6 +8,7 @@ import { api } from '../api.js';
 import { C, FONT, MONO, maskPhone, darkenColor, isOrgAdmin } from '../constants.js';
 import MaskedNumber from '../components/MaskedNumber.jsx';
 import SearchableSelect from '../components/SearchableSelect.jsx';
+import { extractVars, resolvePreviewText } from '../utils/templateInterpolation.js';
 
 const ROLE_LABEL_MAP = { admin: 'Super Admin', org_admin: 'Org Admin', bda_sales: 'Sales', viewer: 'Viewer' };
 
@@ -338,32 +339,7 @@ export default function ContactsPage({ user, onNavigate }) {
 
   const getTagInfo = (tagRef) => tags.find(t => t.id === tagRef.id) || tagRef;
 
-  // Extract template variables {{1}}, {{2}}, etc.
-  const extractVars = (t) => {
-    const m = [...(t || '').matchAll(/\{\{(\d+)\}\}/g)];
-    return [...new Set(m.map(x => x[1]))].sort((a, b) => +a - +b);
-  };
 
-  // Resolve template variables using mapping + first selected contact for live preview
-  const resolvePreviewText = (text, mapping, contact) => {
-    if (!text || !contact) return text || '';
-    return text.replace(/\{\{(\d+)\}\}/g, (_, v) => {
-      const field = mapping[v];
-      if (!field) return `{{${v}}}`;
-      if (field === 'name') return contact.name || `{{${v}}}`;
-      if (field === 'contact_number') return maskPhone(contact.contact_number) || `{{${v}}}`;
-      if (field.startsWith('custom_fields.')) {
-        const id = field.split('.')[1];
-        return contact.custom_fields?.[id] || `{{${v}}}`;
-      }
-      if (field.startsWith('category_tag.')) {
-        const catId = field.split('.')[1];
-        const tag = contact.tags?.find(t => t.category_id == catId);
-        return tag?.name || `{{${v}}}`;
-      }
-      return `{{${v}}}`;
-    });
-  };
 
   const selectedTemplate = templates.find(t => t.id.toString() === broadcastTemplateId);
   // 'image' | 'video' | 'document' when the selected template has a media header

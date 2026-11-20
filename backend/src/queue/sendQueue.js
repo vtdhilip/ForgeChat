@@ -152,12 +152,19 @@ function startSendWorker() {
 
 async function enqueueSend(jobData, opts = {}) {
   const idKey = jobData.localMessageId || `${jobData.accountId}-${jobData.to}-${Date.now()}`;
+  // Priority scheduling: interactive chat & direct alerts get priority=1; bulk broadcasts get priority=10.
+  // In BullMQ, lower numeric values have higher execution priority.
+  const priority = opts.priority != null
+    ? opts.priority
+    : (jobData?.originRef?.kind === 'broadcast_log' ? 10 : 1);
+
   const addOpts = {
     jobId: `send-${idKey}`,
     attempts: ATTEMPTS,
     backoff: { type: 'exponential', delay: 1500 },
     removeOnComplete: { count: 500, age: 3600 },
     removeOnFail: { count: 1000, age: 86400 },
+    priority,
   };
   // Optional delayed delivery (used by automation Delay nodes so a later message
   // lands after an earlier one). BullMQ holds the job for `delayMs` before a

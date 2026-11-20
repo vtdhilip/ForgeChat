@@ -401,10 +401,9 @@ export default function MessageBubble({ message, isOutgoing, senderAvatarUrl, co
     const el = document.getElementById(`msg-${message.context_message_id}`);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.style.transition = 'background 0.3s ease';
-    el.style.background = 'rgba(37,211,102,0.18)';
-    el.style.borderRadius = '8px';
-    setTimeout(() => { el.style.background = ''; }, 1200);
+    el.classList.remove('quoted-highlight');
+    void el.offsetWidth;
+    el.classList.add('quoted-highlight');
   };
 
   const bubbleStyle = {

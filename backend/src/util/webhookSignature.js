@@ -24,9 +24,7 @@ function verifyMetaSignature(req) {
   const raw = req.rawBody;
   if (!header.startsWith('sha256=') || !raw || !raw.length) return false;
   const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(raw).digest('hex');
-  const a = Buffer.from(header);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  return safeEqual(header, expected);
 }
 
 module.exports = { safeEqual, verifyMetaSignature };

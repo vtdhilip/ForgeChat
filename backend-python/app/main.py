@@ -35,7 +35,6 @@ from app.services.mcp_service import ensure_mcp_tables
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Connect to DB pool
     print(f"[Synaptic Chat] Starting Python FastAPI backend on port {settings.PORT}...")
     await db.connect()
     try:
@@ -43,7 +42,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[MCP] Warning: ensure_mcp_tables failed: {e}")
     yield
-    # Shutdown: Close DB pool
     print("[Synaptic Chat] Shutting down Python FastAPI backend...")
     await db.disconnect()
 
@@ -77,11 +75,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Routers
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(organizations.router)
 app.include_router(users.router)
+app.include_router(users.team_members_router)
 app.include_router(categories.router)
 app.include_router(contact_fields.router)
 app.include_router(whatsapp_accounts.router)

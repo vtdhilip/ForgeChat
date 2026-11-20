@@ -58,8 +58,8 @@ Walk this flow:
 
 Notes: an ACTIVE agent needs both aiModelId and llmModel (otherwise save status:"draft"). Only one active agent per WhatsApp number. Always confirm destructive actions (delete) first.`;
 
-// Build a fresh server scoped to one request's capabilities.
-function buildServer(capabilities) {
+// Build a fresh server scoped to one request's capabilities and tenant organization.
+function buildServer(capabilities, orgId = null) {
   const server = new McpServer({ name: 'synapticchat-agents', version: '1.0.0' });
 
   /* discovery */
@@ -67,7 +67,7 @@ function buildServer(capabilities) {
     title: 'List WhatsApp accounts',
     description: 'List the WhatsApp business numbers an agent can run on. Use to ask the user which number to use. Returns id, displayName, phoneNumber, isActive, isDefault.',
     inputSchema: {},
-  }, gated(capabilities, 'discovery', () => mcpService.listWaAccounts()));
+  }, gated(capabilities, 'discovery', () => mcpService.listWaAccounts(orgId)));
 
   server.registerTool('list_models', {
     title: 'List AI models',
@@ -79,7 +79,7 @@ function buildServer(capabilities) {
     title: 'List Google accounts',
     description: 'List the connected Google accounts. Use FIRST when configuring a Google Sheets tool so the user picks which account to read/write. Returns [{ id, label, status }]. Pass the chosen id as googleAccountId to search_spreadsheets / list_sheet_tabs / add_google_sheets_tool.',
     inputSchema: {},
-  }, gated(capabilities, 'discovery', () => mcpService.listGoogleAccounts()));
+  }, gated(capabilities, 'discovery', () => mcpService.listGoogleAccounts(orgId)));
 
   server.registerTool('search_spreadsheets', {
     title: 'Search Google spreadsheets',
@@ -118,13 +118,13 @@ function buildServer(capabilities) {
       type: z.enum(['image', 'video', 'audio', 'document']).optional(),
       name: z.string().optional().describe('Partial name search (case-insensitive). Use when the user mentions a media file by name.'),
     },
-  }, gated(capabilities, 'discovery', ({ type, name }) => mcpService.listMedia(type, name)));
+  }, gated(capabilities, 'discovery', ({ type, name }) => mcpService.listMedia(type, name, orgId)));
 
   server.registerTool('list_templates', {
     title: 'List message templates',
     description: 'List WhatsApp message templates (optionally by WhatsApp account). Returns [{ id, name, language, status, category, waAccountId }]. When the user mentions a template by name, call this to find it, then call get_template to read its full content before confirming with the user.',
     inputSchema: { waAccountId: z.union([z.string(), z.number()]).optional() },
-  }, gated(capabilities, 'discovery', ({ waAccountId }) => mcpService.listTemplates(waAccountId)));
+  }, gated(capabilities, 'discovery', ({ waAccountId }) => mcpService.listTemplates(waAccountId, orgId)));
 
   server.registerTool('get_template', {
     title: 'Get template content',
@@ -136,13 +136,13 @@ function buildServer(capabilities) {
     title: 'List agents',
     description: 'List all existing AI agents with tool counts and last-run time.',
     inputSchema: {},
-  }, gated(capabilities, 'discovery', () => agentService.listAgents()));
+  }, gated(capabilities, 'discovery', () => agentService.listAgents(orgId)));
 
   server.registerTool('get_agent', {
     title: 'Get agent',
     description: 'Get one agent in full, including its tools[].',
     inputSchema: { id: z.union([z.string(), z.number()]) },
-  }, gated(capabilities, 'discovery', ({ id }) => agentService.getAgent(id)));
+  }, gated(capabilities, 'discovery', ({ id }) => agentService.getAgent(id, orgId)));
 
   /* mutations */
   server.registerTool('create_agent', {
@@ -168,7 +168,7 @@ function buildServer(capabilities) {
       triggerSessionMinutes: z.number().int().min(1).max(1440).optional(),
       mediaGroups: z.array(mediaGroupSchema).optional(),
     },
-  }, gated(capabilities, 'create_agent', (a) => agentService.createAgent(a)));
+  }, gated(capabilities, 'create_agent', (a) => agentService.createAgent(a, orgId)));
 
   server.registerTool('update_agent', {
     title: 'Update agent',
@@ -193,7 +193,7 @@ function buildServer(capabilities) {
       triggerSessionMinutes: z.number().int().min(1).max(1440).optional(),
       mediaGroups: z.array(mediaGroupSchema).optional(),
     },
-  }, gated(capabilities, 'update_agent', ({ id, ...patch }) => agentService.updateAgent(id, patch)));
+  }, gated(capabilities, 'update_agent', ({ id, ...patch }) => agentService.updateAgent(id, patch, orgId)));
 
   server.registerTool('add_google_sheets_tool', {
     title: 'Add Google Sheets tool',
@@ -210,7 +210,7 @@ function buildServer(capabilities) {
     agentService.addTool(agentId, {
       toolType: 'google_sheets',
       config: { google_account_id: googleAccountId, spreadsheet_id: spreadsheetId, spreadsheet_name: spreadsheetName || null, sheet_name: sheetName, ops },
-    })));
+    }, orgId)));
 
   server.registerTool('add_http_tool', {
     title: 'Add HTTP request tool',
@@ -239,7 +239,7 @@ function buildServer(capabilities) {
     agentService.addTool(agentId, {
       toolType: 'http_request',
       config: { label, description, method, url, headers: headers || [], params: params || [], timeout_ms: timeoutMs || 10000 },
-    })));
+    }, orgId)));
 
   server.registerTool('add_tool', {
     title: 'Add tool (generic)',
@@ -251,7 +251,7 @@ function buildServer(capabilities) {
       isEnabled: z.boolean().optional(),
     },
   }, gated(capabilities, 'manage_tools', ({ agentId, toolType, config, isEnabled }) =>
-    agentService.addTool(agentId, { toolType, config, isEnabled })));
+    agentService.addTool(agentId, { toolType, config, isEnabled }, orgId)));
 
   server.registerTool('update_tool', {
     title: 'Update tool',
@@ -263,19 +263,19 @@ function buildServer(capabilities) {
       isEnabled: z.boolean().optional(),
     },
   }, gated(capabilities, 'manage_tools', ({ agentId, toolId, config, isEnabled }) =>
-    agentService.updateTool(agentId, toolId, { config, isEnabled })));
+    agentService.updateTool(agentId, toolId, { config, isEnabled }, orgId)));
 
   server.registerTool('delete_tool', {
     title: 'Delete tool',
     description: 'Remove a tool from an agent. Confirm with the user first.',
     inputSchema: { agentId: z.union([z.string(), z.number()]), toolId: z.union([z.string(), z.number()]) },
-  }, gated(capabilities, 'delete', ({ agentId, toolId }) => agentService.deleteTool(agentId, toolId)));
+  }, gated(capabilities, 'delete', ({ agentId, toolId }) => agentService.deleteTool(agentId, toolId, orgId)));
 
   server.registerTool('delete_agent', {
     title: 'Delete agent',
     description: 'Delete an agent entirely. Destructive — confirm with the user first.',
     inputSchema: { id: z.union([z.string(), z.number()]) },
-  }, gated(capabilities, 'delete', ({ id }) => agentService.deleteAgent(id)));
+  }, gated(capabilities, 'delete', ({ id }) => agentService.deleteAgent(id, orgId)));
 
   /* prompt */
   server.registerPrompt('create-synapticchat-agent', {
@@ -296,9 +296,9 @@ async function mcpHttpHandler(req, res) {
       id: null,
     });
   }
-  let capabilities;
+  let capabilities, orgId;
   try {
-    ({ capabilities } = await mcpService.validateKey(req.params.key));
+    ({ capabilities, orgId } = await mcpService.validateKey(req.params.key));
   } catch (err) {
     return res.status(err.status || 401).json({
       jsonrpc: '2.0',
@@ -307,7 +307,7 @@ async function mcpHttpHandler(req, res) {
     });
   }
 
-  const server = buildServer(capabilities);
+  const server = buildServer(capabilities, orgId);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => {
     transport.close().catch(() => {});

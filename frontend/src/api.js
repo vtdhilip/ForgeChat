@@ -104,6 +104,27 @@ export const api = {
       body: JSON.stringify(password ? { password } : {}),
     }),
   },
+  teamMembers: {
+    list: async () => {
+      try {
+        const res = await req('/team-members');
+        if (Array.isArray(res) && res.length > 0) return res;
+      } catch {}
+      try {
+        const users = await req('/users');
+        if (Array.isArray(users) && users.length > 0) {
+          return users.map(u => ({
+            id: String(u.id),
+            name: u.displayName || u.username,
+            email: u.email,
+            phone: (u.assignedWaNumbers || [])[0] || '',
+            avail: u.isActive !== false ? 'online' : 'away',
+          }));
+        }
+      } catch {}
+      return [];
+    },
+  },
   templates: {
     list: ({ accountId, status, q } = {}) => {
       const qs = new URLSearchParams();
@@ -318,9 +339,7 @@ export const api = {
     if (!res.ok) throw new Error(json?.error || `${res.status}`);
     return json;
   },
-  syncTemplate: (id) => req(`/templates/${id}/sync`, { method: 'POST' }),
   syncAllTemplates: () => req('/templates/sync-all', { method: 'POST' }),
-  duplicateTemplate: (id) => req(`/templates/${id}/duplicate`, { method: 'POST' }),
   bulkSubmitTemplates: (ids) => req('/templates/bulk-submit', { method: 'POST', body: JSON.stringify({ ids }) }),
   mediaLibrary: {
     // accountId scopes media to its owning (connected) WhatsApp account.

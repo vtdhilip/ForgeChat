@@ -50,8 +50,7 @@ test('decrypt returns null on empty/garbage input', () => {
 
 test('maskSecret hides the middle and never returns the raw secret', () => {
   const masked = maskSecret('sample-token-1234567890-ABCDEF');
-  assert.notEqual(masked, 'sample-token-1234567890-ABCDEF');
-  assert.match(masked, /•/);
+  assert.equal(masked, 'samp••••••••CDEF');
 });
 
 test('maskSecret fully masks short values', () => {

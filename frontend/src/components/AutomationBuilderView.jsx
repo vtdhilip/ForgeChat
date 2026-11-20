@@ -437,6 +437,19 @@ export const getTriggerDisplay = (n) => {
   return { title: n.title, sub: n.sub };
 };
 
+const toButtonArray = (b) => {
+  if (Array.isArray(b)) return b;
+  if (typeof b === "string") {
+    try {
+      const p = JSON.parse(b);
+      return Array.isArray(p) ? p : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
 export const outputHandlesOf = (n) => {
   if (n.type === "condition") return ["yes","no"];
   if (n.type === "message" && n.messageMode === "direct") {
@@ -448,7 +461,8 @@ export const outputHandlesOf = (n) => {
       return dd.sections.map((_,i)=>`row:${i}`);
     }
   }
-  if (n.type === "message" && n.buttons && n.buttons.length > 0) return n.buttons.map((_,i)=>`btn:${i}`);
+  const btns = toButtonArray(n.buttons);
+  if (n.type === "message" && btns.length > 0) return btns.map((_,i)=>`btn:${i}`);
   return ["default"];
 };
 
@@ -468,9 +482,10 @@ export const handlePos = (n, kind, which="default") => {
       return { x: n.x + ((idx + 1) * NODE_W) / (total + 1), y: n.y + h };
     }
   }
-  if (n.buttons && typeof which === "string" && which.startsWith("btn:")) {
+  const btns = toButtonArray(n.buttons);
+  if (btns.length > 0 && typeof which === "string" && which.startsWith("btn:")) {
     const idx = parseInt(which.slice(4), 10);
-    const total = n.buttons.length;
+    const total = btns.length;
     return { x: n.x + ((idx + 1) * NODE_W) / (total + 1), y: n.y + h };
   }
   if (n.type === "condition" && which === "yes") return { x: n.x + NODE_W/3,     y: n.y + h };
@@ -591,6 +606,7 @@ const OPERATORS = ["equals","not equals","contains","not contains","starts with"
 // (real JSONB on contacts), the inbound message, IST business hours, and the
 // saved contact name. Each is a one-click template the user can tweak.
 const WA_CONDITION_PRESETS = [
+  { source:"custom", field:"opt_in", op:"is true", label:"Contact is opted-in" },
   { source:"tags",   field:"Hot Lead", op:"has tag",       label:'Has the tag "Hot Lead"' },
   { source:"tags",   field:"Hot Lead", op:"not has tag",   label:'Doesn\'t have the tag "Hot Lead"' },
   { source:"time",   field:"Current time", op:"equals", value:"business", label:"During business hours (Mon–Sat 9–6 IST)" },
@@ -799,8 +815,9 @@ const FlowNode = ({ n, selected, onSelect, onStartDrag, onStartConnect, whatsapp
                   return dd.buttons[idx].title || `Btn ${idx + 1}`;
                 }
               }
-              if (n.buttons && n.buttons[idx]) {
-                const b = n.buttons[idx];
+              const btns = toButtonArray(n.buttons);
+              if (btns[idx]) {
+                const b = btns[idx];
                 return b.text || b || `Btn ${idx + 1}`;
               }
               return `Btn ${idx + 1}`;
@@ -869,7 +886,7 @@ const Connectors = ({ nodes, edges, ghost }) => {
 };
 
 const EdgePlus = ({ x, y, onClick, withConnector=false }) => (
-  <div data-testid={withConnector ? "append-plus" : "edge-plus"} onClick={onClick} style={{ position:"absolute", left:x, top:y, transform:"translate(-50%,-50%)", zIndex:8, cursor:"pointer" }}>
+  <div data-testid={withConnector ? "append-plus" : "edge-plus"} onClick={onClick} onMouseDown={(e)=>e.stopPropagation()} style={{ position:"absolute", left:x, top:y, transform:"translate(-50%,-50%)", zIndex:8, cursor:"pointer" }}>
     <div style={{ width:26, height:26, borderRadius:"50%", background:"#fff", border:`1.5px solid ${C.red}`, color:C.red, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, fontWeight:700, boxShadow:"0 2px 6px rgba(0,0,0,.12)", transition:"all .15s", lineHeight:1 }}>
       {IC.plus(14)}
     </div>
@@ -898,7 +915,7 @@ const NodeActions = ({ x, y, onDuplicate, onDelete }) => (
 /* ── Node Picker (add node between / append) ── */
 const NodePicker = ({ x, y, onPick, onClose, mode, groups = [] }) => {
   const [q, setQ] = useState("");
-  const [activeG, setActiveG] = useState(null);
+  const [openG, setOpenG] = useState({ Messages:true, Logic:true, Actions:true });
   const pickerRef = useRef(null);
   const [pos, setPos] = useState({ x, y });
   const visibleGroups = groups.filter(g => g.title !== "Triggers");
@@ -922,7 +939,7 @@ const NodePicker = ({ x, y, onPick, onClose, mode, groups = [] }) => {
     // keep inside top edge
     if (ny < MARGIN) ny = MARGIN;
     setPos({ x: nx, y: ny });
-  }, [x, y, activeG, q]);
+  }, [x, y, openG, q]);
 
   return (
     <div ref={pickerRef} onClick={(e) => e.stopPropagation()} style={{ position:"fixed", left:pos.x, top:pos.y, zIndex:70, background:"#fff", border:`1px solid ${C.cardBorder}`, borderRadius:12, padding:6, boxShadow:"0 12px 36px rgba(0,0,0,.14)", width:220, maxHeight:"70vh", overflowY:"auto" }}>
@@ -933,10 +950,10 @@ const NodePicker = ({ x, y, onPick, onClose, mode, groups = [] }) => {
       {visibleGroups.map(g => {
         const items = g.items.filter(i => !q || i.name.toLowerCase().includes(q.toLowerCase()));
         if (!items.length) return null;
-        const isOpen = hasSearch ? true : activeG === g.title;
+        const isOpen = hasSearch ? true : openG[g.title] !== false;
         return (
           <div key={g.title} style={{ marginBottom:4 }}>
-            <div onClick={()=>setActiveG(prev => prev === g.title ? null : g.title)} style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 8px", cursor:"pointer", borderRadius:6, transition:"background .12s" }} onMouseEnter={e=>e.currentTarget.style.background="#F8F7F2"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <div onClick={()=>setOpenG(prev => ({ ...prev, [g.title]: !isOpen }))} style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 8px", cursor:"pointer", borderRadius:6, transition:"background .12s" }} onMouseEnter={e=>e.currentTarget.style.background="#F8F7F2"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <span style={{ width:6, height:6, borderRadius:99, background:g.color }}/>
               <span style={{ fontSize:9, color:C.text4, fontWeight:700, letterSpacing:".08em", textTransform:"uppercase", flex:1 }}>{g.title}</span>
               <span style={{ fontSize:10, fontWeight:600, color:C.muted, background:C.sectionBg, borderRadius:99, padding:"1px 6px", minWidth:18, textAlign:"center" }}>{items.length}</span>
@@ -991,6 +1008,14 @@ const BLOCK_GROUPS = [
       defaults:{ actions:[{ kind:"Add Tag", value:"" }], summary:"Add a tag to the contact" } },
     { name:"Remove Tag", type:"action", icon:IC.tag, desc:"Remove a tag",
       defaults:{ actions:[{ kind:"Remove Tag", value:"" }], summary:"Remove a tag from the contact" } },
+    { name:"Human Handoff", type:"handoff", icon:IC.agent, desc:"Assign to team member",
+      defaults:{ assignMode:"specific", assigned:[], priority:"high", slaValue:"15", slaUnit:"minutes", internalNote:"", notify:{ wa:true, email:true, task:false }, summary:"Assign conversation to a team member" } },
+    { name:"Trigger Another Flow", type:"subflow", icon:IC.flow, desc:"Run another automation",
+      defaults:{ flowId:"", waitMode:"await", summary:"Run another automation flow" } },
+    { name:"API Request", type:"api", icon:IC.api, desc:"Call external API",
+      defaults:{ method:"POST", apiUrl:"", headers:{}, body:"", onError:"continue", summary:"Send HTTP request to external API" } },
+    { name:"AI Agent", type:"ai", icon:IC.ai, desc:"Process with AI",
+      defaults:{ aiTask:"lead_qualification", aiGoal:"", aiContext:"", aiSaveTo:"", aiFallback:"fallback_message", fallbackTemplateId:"", summary:"Process with AI" } },
   ]},
 ];
 
@@ -1156,7 +1181,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
 
     const tplId = node.templateId || "";
     const tpl = templates.find(t => String(t.id) === String(tplId));
-    const templateButtons = tpl?.buttons || null;
+    const templateButtons = toButtonArray(tpl?.buttons);
 
     const TabBtn = ({ label, active, onClick }) => (
       <button onClick={onClick} style={{ flex:1, padding:"6px 0", fontSize:11, fontWeight:700, fontFamily:"'DM Sans'", borderRadius:8, border:"none", cursor:"pointer", background: active ? C.brandBg : "transparent", color: active ? C.brandDark : C.muted }}>
@@ -1415,7 +1440,7 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
             {templateButtons.map((b, i) => (
               <div key={i} style={{ background:C.sectionBg, border:`1px solid ${C.innerBorder}`, borderRadius:10, padding:"10px 11px", marginBottom:6, display:"flex", alignItems:"center", gap:9 }}>
                 <div style={{ width:22, height:22, borderRadius:5, background:"#fff", border:`1px solid ${C.cardBorder}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontFamily:"'DM Mono'", fontWeight:700, color:C.text3, flexShrink:0 }}>{i+1}</div>
-                <div style={{ flex:1, fontSize:12, fontWeight:600, color:C.text1 }}>{b.text}</div>
+                <div style={{ flex:1, fontSize:12, fontWeight:600, color:C.text1 }}>{b?.text || b?.title || (typeof b === "string" ? b : `Button ${i+1}`)}</div>
                 <span style={{ fontSize:9, fontFamily:"'DM Mono'", fontWeight:700, color:C.brandDark, background:C.brandBg, border:`1px solid ${C.brandBright}`, borderRadius:5, padding:"2px 6px", letterSpacing:".04em" }}>{`btn:${i}`}</span>
               </div>
             ))}
@@ -2378,9 +2403,34 @@ const SettingsPanel = ({ node, nodes=[], edges=[], onUpdateNode=()=>{}, onDelete
         </div>
       </div>
 
-      <Field label="Trigger type" hint="Automations are keyword-triggered.">
-        <Select value="keyword" disabled style={{ fontWeight:600 }}>
+      <Field label="Trigger type" hint="How this automation starts.">
+        <Select
+          value={tk}
+          onChange={(e) => {
+            const nextKind = e.target.value;
+            const displays = {
+              keyword: { title: 'Trigger: Keyword', sub: 'When a contact sends a specific keyword' },
+              tagApplied: { title: 'Trigger: Tag added to contact', sub: 'When a tag is added to a contact' },
+              newContact: { title: 'Trigger: New Contact', sub: 'First-time message from a new contact' },
+              anyMessage: { title: 'Trigger: Any Message', sub: 'Fires on every inbound message' },
+              link: { title: 'Trigger: wa.me Link', sub: 'When contact opens a click-to-chat link' },
+              qr: { title: 'Trigger: QR Scan', sub: 'When contact scans a printed QR code' },
+              webhook: { title: 'Trigger: Webhook', sub: 'Incoming HTTP POST webhook' },
+              apiEvent: { title: 'Trigger: API Event', sub: 'Event from integration' },
+            };
+            const d = displays[nextKind] || displays.keyword;
+            onUpdateNode(node.id, { triggerKind: nextKind, title: d.title, sub: d.sub });
+          }}
+          style={{ fontWeight:600 }}
+        >
           <option value="keyword">Keyword Trigger</option>
+          <option value="tagApplied">Tag Applied</option>
+          <option value="newContact">New Contact</option>
+          <option value="anyMessage">Any Inbound Message</option>
+          <option value="link">WhatsApp Link (wa.me)</option>
+          <option value="qr">QR Code Scan</option>
+          <option value="webhook">Webhook (HTTP POST)</option>
+          <option value="apiEvent">API / App Event</option>
         </Select>
       </Field>
 
@@ -3202,7 +3252,7 @@ const PhonePreview = ({ onClose, nodes = [], edges = [], templates = [], teamMem
         return;
       }
       const text = resolveBody(tpl.body, node.bindings || {});
-      const buttons = tpl.buttons;
+      const buttons = toButtonArray(tpl.buttons);
       setConv(c => [...c, { from:"bot", text, time: now(), buttons, ownerNodeId: node.id }]);
       if (buttons && buttons.length) {
         setWaiting({ nodeId: node.id, buttons });
@@ -3425,7 +3475,8 @@ const PhonePreview = ({ onClose, nodes = [], edges = [], templates = [], teamMem
                     );
                   }
                   const isUser = m.from === "user";
-                  const hasButtons = m.buttons && m.buttons.length > 0;
+                  const msgButtons = toButtonArray(m.buttons);
+                  const hasButtons = msgButtons.length > 0;
                   const isWaitingOnThese = waiting && waiting.nodeId === m.ownerNodeId;
                   return (
                     <div key={i} style={{ display:"flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom:4 }}>
@@ -3438,7 +3489,7 @@ const PhonePreview = ({ onClose, nodes = [], edges = [], templates = [], teamMem
                         </div>
                         {hasButtons && (
                           <div style={{ borderTop:"1px solid #E0E0E0" }}>
-                            {m.buttons.map((btn, idx) => (
+                            {msgButtons.map((btn, idx) => (
                               <button key={idx} onClick={()=>isWaitingOnThese && onTapButton(btn, idx)} disabled={!isWaitingOnThese}
                                 style={{ display:"block", width:"100%", padding:"7px 9px", border:"none", borderTop:"1px solid #F0F0F0", textAlign:"center", color:"#00A5F4", fontSize:11, fontWeight:500, background:"transparent", cursor: isWaitingOnThese ? "pointer" : "default", opacity: isWaitingOnThese ? 1 : 0.4, fontFamily:"-apple-system, 'SF Pro Display', sans-serif", transition:"background .12s" }}
                                 onMouseEnter={(e)=>{ if (isWaitingOnThese) e.currentTarget.style.background = "#F5FBFF"; }}
@@ -3666,7 +3717,7 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
       try {
         const [tpls, mems, tgs, cFields, flows, accs, usrs] = await Promise.all([
           api.templates.list(),
-          Promise.resolve([]),            // team members removed (single-owner system)
+          api.teamMembers.list(),
           api.tags.list(),
           api.contactFields.list(),
           api.chatbots.list(),
@@ -3713,6 +3764,7 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
   const [edges, setEdges] = useState([]);
   const [saving, setSaving] = useState(false);
   const savedSnapshotRef = useRef("");
+  const loadedIdRef = useRef(null);
   const [savedSnapshot, setSavedSnapshot] = useState("");
 
   const idRef = useRef(1);
@@ -3731,11 +3783,32 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
   }, []);
 
   useEffect(() => {
-    const cfg = automation?.config || {};
+    let cfg = automation?.config || {};
+    if (typeof cfg === 'string') {
+      try { cfg = JSON.parse(cfg); } catch {}
+      if (typeof cfg === 'string') {
+        try { cfg = JSON.parse(cfg); } catch {}
+      }
+    }
+    cfg = (cfg && typeof cfg === 'object') ? cfg : {};
+
+    const incomingNodes = (cfg.nodes && cfg.nodes.length > 0)
+      ? cfg.nodes.map(n => ({ ...n, disabled: n.disabled === true }))
+      : null;
+    const incomingEdges = incomingNodes ? (cfg.edges || []) : null;
+    const incomingSnap = incomingNodes ? JSON.stringify({ nodes: incomingNodes, edges: incomingEdges }) : "";
+
+    // Skip re-initialization if we are already editing this automation and the incoming
+    // config matches the current saved snapshot (e.g. immediately after a successful save).
+    if (automation?.id && String(automation.id) === String(loadedIdRef.current) && incomingSnap && incomingSnap === savedSnapshotRef.current) {
+      return;
+    }
+    loadedIdRef.current = automation?.id || null;
+
     let initialNodes, initialEdges;
-    if (cfg.nodes && cfg.nodes.length > 0) {
-      initialNodes = cfg.nodes.map(n => ({ ...n, disabled: n.disabled === true }));
-      initialEdges = cfg.edges || [];
+    if (incomingNodes) {
+      initialNodes = incomingNodes;
+      initialEdges = incomingEdges;
       setNodes(initialNodes);
       setEdges(initialEdges);
       const next = computeNextId(cfg.nodes);
@@ -3755,7 +3828,7 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
     const initialSnap = JSON.stringify({ nodes: initialNodes, edges: initialEdges });
     savedSnapshotRef.current = initialSnap;
     setSavedSnapshot(initialSnap);
-  }, [automation?.id]);
+  }, [automation?.id, automation?.config]);
 
   const [selectedId, setSelectedId] = useState(null);
   const [transform,  setTransform]  = useState({ x:30, y:30, scale:0.7 });
@@ -3849,11 +3922,12 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
   const onSelectTemplate = (nodeId, templateId) => {
     const tpl = templates.find(t => String(t.id) === String(templateId));
     if (!tpl) return;
-    updateNode(nodeId, { templateId, title: tpl.name, buttons: tpl.buttons || null });
+    const btns = toButtonArray(tpl.buttons);
+    updateNode(nodeId, { templateId, title: tpl.name, buttons: btns.length ? btns : null });
     setEdges(prev => {
       const next = prev.filter(e => e.from !== nodeId || !e.fromHandle?.startsWith("btn:"));
-      if (tpl.buttons && tpl.buttons.length > 0) {
-        next.push(...tpl.buttons.map((_, i) => ({ from: nodeId, to: null, fromHandle: `btn:${i}` })));
+      if (btns.length > 0) {
+        next.push(...btns.map((_, i) => ({ from: nodeId, to: null, fromHandle: `btn:${i}` })));
       }
       pushHistory(nodes, next);
       return next;
@@ -3964,7 +4038,7 @@ const AutomationBuilderView = ({ automation, onBack, onSave, onToggleStatus, act
 
   const onViewportMouseDown = (e) => {
     if (e.button !== 0 && e.button !== 1) return;
-    if (e.target.closest("[data-node-id]")) return;
+    if (e.target.closest("[data-node-id], [data-testid='append-plus'], [data-testid='edge-plus'], button, input, select")) return;
     panRef.current = { x: e.clientX, y: e.clientY, ox: transform.x, oy: transform.y };
     setPanning(true);
     window.addEventListener("mousemove", onPanMove);

@@ -79,7 +79,12 @@ async def auth_login(payload: LoginRequest, response: Response, request: Request
         "SELECT * FROM coexistence.forgecrm_users WHERE email = $1",
         email
     )
-    if not user_row or not verify_password(payload.password, user_row["password"]):
+    # Timing attack mitigation: always execute verify_password even if user does not exist
+    dummy_hash = "$2a$10$wN9Qj0sZ9K/6.mP2cE6CeezU2B9r7H0qJd1cT0tB5a8yK3wJzV5mi"
+    hash_to_compare = user_row["password"] if user_row else dummy_hash
+    password_valid = verify_password(payload.password, hash_to_compare)
+
+    if not user_row or not password_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"

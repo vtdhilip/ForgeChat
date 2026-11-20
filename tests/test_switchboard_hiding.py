@@ -42,7 +42,13 @@ print(jwt.encode(data, settings.JWT_SECRET, algorithm='HS256'))
 
 def compute_visible_items(user):
     is_super_admin = user.get("role") == "admin"
-    org_modules = (user.get("activeOrg") or {}).get("settings", {}).get("modules") or {}
+    raw_settings = (user.get("activeOrg") or {}).get("settings") or {}
+    if isinstance(raw_settings, str):
+        try:
+            raw_settings = json.loads(raw_settings)
+        except Exception:
+            raw_settings = {}
+    org_modules = raw_settings.get("modules") or {}
     user_pages = user.get("pages")
 
     visible = []
@@ -92,7 +98,13 @@ def main():
     assert res.status_code == 200, f"Failed auth/me: {res.status_code} {res.text}"
     user = res.json().get("user", {})
     active_org = user.get("activeOrg", {})
-    modules = active_org.get("settings", {}).get("modules", {})
+    settings_data = active_org.get("settings", {})
+    if isinstance(settings_data, str):
+        try:
+            settings_data = json.loads(settings_data)
+        except Exception:
+            settings_data = {}
+    modules = settings_data.get("modules", {})
     print(f"✅ 3. Loaded activeOrg: {active_org.get('name')} (Slug: {active_org.get('slug')})")
     print(f"   Current modules in database: {json.dumps(modules, indent=2)}")
 
@@ -100,6 +112,20 @@ def main():
     # Screenshot settings:
     # Enabled: chats, contacts, media
     # Disabled: pipelines, broadcasts, templates, chatbots, agents, orders
+    baseline_modules = {
+        "chats": True,
+        "contacts": True,
+        "media": True,
+        "pipelines": False,
+        "broadcasts": False,
+        "templates": False,
+        "chatbots": False,
+        "agents": False,
+        "orders": False,
+    }
+    s.put(f"{BASE_URL}/api/organizations/{LINNDEN_ORG_ID}/modules", json={"modules": baseline_modules})
+    res = s.get(f"{BASE_URL}/api/auth/me")
+    user = res.json().get("user", {})
     visible, hidden = compute_visible_items(user)
     print("\n📋 4. Baseline Sidebar Evaluation (LINNDEN active):")
     print(f"   Visible Buttons ({len(visible)}): {visible}")
@@ -201,6 +227,9 @@ def main():
     assert res.status_code == 200
     assert "Synaptic Chat" in res.text or "<div id=\"root\">" in res.text
     print("   ✅ Frontend root index HTML serving successfully from Nginx on Docker.")
+
+    # Re-enable chatbots so E2E test suite can navigate to Automations
+    s.put(f"{BASE_URL}/api/organizations/{LINNDEN_ORG_ID}/modules", json={"modules": {"chatbots": True}})
 
     print("\n" + "=" * 60)
     print("🎉 ALL SWITCHBOARD BUTTON HIDING & TOGGLING TESTS PASSED!")

@@ -173,11 +173,20 @@ router.get('/numbers', async (req, res) => {
     // one contact assigned to them on that number. Admin sees everything.
     let extraFilter = '';
     const params = [];
+    if (req.orgId) {
+      params.push(req.orgId);
+      extraFilter += ` AND (org_id = $${params.length} OR org_id IS NULL)`;
+    }
     if (!isAdmin(req.user)) {
       params.push(req.user.id);
-      extraFilter = `AND wa_number IN (
+      extraFilter += ` AND wa_number IN (
         SELECT DISTINCT wa_number FROM coexistence.contacts WHERE assigned_user_id = $${params.length}
       )`;
+    }
+    let acctOrgFilter = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      acctOrgFilter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
     }
     const { rows } = await pool.query(`
       SELECT
@@ -194,7 +203,7 @@ router.get('/numbers', async (req, res) => {
         AND regexp_replace(wa_number, '[^0-9]', '', 'g') IN (
           SELECT regexp_replace(display_phone_number, '[^0-9]', '', 'g')
           FROM coexistence.whatsapp_accounts
-          WHERE display_phone_number IS NOT NULL
+          WHERE display_phone_number IS NOT NULL ${acctOrgFilter}
         )
       GROUP BY wa_number
       ORDER BY last_message_time DESC
@@ -707,6 +716,11 @@ router.get('/messages', async (req, res) => {
       // phantom "Status: delivered" rows; the webhook no longer creates these).
       `message_type <> 'status'`,
     ];
+    if (req.orgId) {
+      conditions.push(`(org_id = $${paramIdx} OR org_id IS NULL)`);
+      params.push(req.orgId);
+      paramIdx++;
+    }
 
     const trimmedSearch = (typeof search === 'string' ? search : '').trim().slice(0, 200);
     if (trimmedSearch) {

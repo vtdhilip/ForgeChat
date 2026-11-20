@@ -197,6 +197,12 @@ function validateToolConfig(toolType, config) {
 
 router.get('/agents', async (req, res) => {
   try {
+    const params = [];
+    let orgClause = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      orgClause = `WHERE (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+    }
     const { rows } = await pool.query(
       `SELECT a.*,
               am.provider AS ai_provider,
@@ -205,7 +211,9 @@ router.get('/agents', async (req, res) => {
               (SELECT MAX(started_at) FROM coexistence.agent_runs r WHERE r.agent_id = a.id) AS last_run_at
          FROM coexistence.agents a
          LEFT JOIN coexistence.ai_models am ON am.id = a.ai_model_id
+         ${orgClause}
          ORDER BY a.updated_at DESC`,
+      params
     );
     res.json(rows.map(r => ({
       ...agentShape(r),
@@ -220,12 +228,18 @@ router.get('/agents', async (req, res) => {
 
 router.get('/agents/:id', async (req, res) => {
   try {
+    const params = [req.params.id];
+    let orgClause = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      orgClause = `AND (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+    }
     const { rows } = await pool.query(
       `SELECT a.*, am.provider AS ai_provider, am.label AS ai_label
          FROM coexistence.agents a
          LEFT JOIN coexistence.ai_models am ON am.id = a.ai_model_id
-        WHERE a.id = $1`,
-      [req.params.id],
+        WHERE a.id = $1 ${orgClause}`,
+      params,
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
 
@@ -287,8 +301,8 @@ router.post('/agents', adminOnly, async (req, res) => {
           context_window_messages, max_tool_iterations,
           trigger_mode, trigger_keyword, trigger_match_type,
           trigger_case_sensitive, trigger_session_minutes, media_groups,
-          transcribe_audio, accept_images)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          transcribe_audio, accept_images, org_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING id`,
       [
         b.name.trim(), b.description?.trim() || null,
@@ -302,6 +316,7 @@ router.post('/agents', adminOnly, async (req, res) => {
         JSON.stringify(mediaGroups),
         !!b.transcribeAudio,
         !!b.acceptImages,
+        req.orgId || null,
       ],
     );
     res.status(201).json(await fetchAgent(rows[0].id));
@@ -317,9 +332,15 @@ router.post('/agents', adminOnly, async (req, res) => {
 router.put('/agents/:id', adminOnly, async (req, res) => {
   try {
     const b = req.body || {};
+    const checkParams = [req.params.id];
+    let orgCheckClause = '';
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      orgCheckClause = `AND (org_id = $${checkParams.length} OR org_id IS NULL)`;
+    }
     const { rows: existing } = await pool.query(
-      'SELECT * FROM coexistence.agents WHERE id = $1',
-      [req.params.id],
+      `SELECT * FROM coexistence.agents WHERE id = $1 ${orgCheckClause}`,
+      checkParams,
     );
     if (existing.length === 0) return res.status(404).json({ error: 'Not found' });
 
@@ -400,9 +421,15 @@ router.put('/agents/:id', adminOnly, async (req, res) => {
 
 router.delete('/agents/:id', adminOnly, async (req, res) => {
   try {
+    const params = [req.params.id];
+    let orgClause = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    }
     const { rowCount } = await pool.query(
-      'DELETE FROM coexistence.agents WHERE id = $1',
-      [req.params.id],
+      `DELETE FROM coexistence.agents WHERE id = $1 ${orgClause}`,
+      params,
     );
     if (rowCount === 0) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true });
@@ -440,12 +467,18 @@ async function resolveModelId({ aiModelId, aiProvider, aiModelLabel }) {
 // secrets like HTTP auth headers).
 router.get('/agents/:id/export', adminOnly, async (req, res) => {
   try {
+    const params = [req.params.id];
+    let orgClause = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      orgClause = `AND (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+    }
     const { rows } = await pool.query(
       `SELECT a.*, am.provider AS ai_provider, am.label AS ai_label
          FROM coexistence.agents a
          LEFT JOIN coexistence.ai_models am ON am.id = a.ai_model_id
-        WHERE a.id = $1`,
-      [req.params.id],
+        WHERE a.id = $1 ${orgClause}`,
+      params,
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const { rows: tools } = await pool.query(
@@ -562,8 +595,26 @@ router.post('/agents/import', adminOnly, async (req, res) => {
 
 /* --------------------------- Tools (nested) --------------------------- */
 
+// Helper to ensure nested operations only target agents in caller's tenant
+async function ensureAgentAccess(agentId, orgId) {
+  const params = [agentId];
+  let orgClause = '';
+  if (orgId) {
+    params.push(orgId);
+    orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+  }
+  const { rows } = await pool.query(
+    `SELECT id FROM coexistence.agents WHERE id = $1 ${orgClause}`,
+    params,
+  );
+  return rows.length > 0;
+}
+
 router.post('/agents/:id/tools', adminOnly, async (req, res) => {
   try {
+    if (!(await ensureAgentAccess(req.params.id, req.orgId))) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
     const b = req.body || {};
     if (!b.toolType || !b.config) {
       return res.status(400).json({ error: 'toolType and config are required' });
@@ -585,6 +636,9 @@ router.post('/agents/:id/tools', adminOnly, async (req, res) => {
 
 router.put('/agents/:id/tools/:toolId', adminOnly, async (req, res) => {
   try {
+    if (!(await ensureAgentAccess(req.params.id, req.orgId))) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
     const b = req.body || {};
     const sets = [];
     const params = [];
@@ -619,6 +673,9 @@ router.put('/agents/:id/tools/:toolId', adminOnly, async (req, res) => {
 
 router.delete('/agents/:id/tools/:toolId', adminOnly, async (req, res) => {
   try {
+    if (!(await ensureAgentAccess(req.params.id, req.orgId))) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
     const { rowCount } = await pool.query(
       'DELETE FROM coexistence.agent_tools WHERE agent_id = $1 AND id = $2',
       [req.params.id, req.params.toolId],
@@ -635,6 +692,9 @@ router.delete('/agents/:id/tools/:toolId', adminOnly, async (req, res) => {
 
 router.get('/agents/:id/runs', async (req, res) => {
   try {
+    if (!(await ensureAgentAccess(req.params.id, req.orgId))) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
     const limit = Math.max(1, Math.min(200, parseInt(req.query.limit || '50', 10)));
     const { rows } = await pool.query(
       `SELECT id, agent_id, contact_number, inbound_message_id, status,
@@ -667,6 +727,9 @@ router.get('/agents/:id/runs', async (req, res) => {
 
 router.get('/agents/:id/runs/:runId', async (req, res) => {
   try {
+    if (!(await ensureAgentAccess(req.params.id, req.orgId))) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
     const { rows: runs } = await pool.query(
       `SELECT * FROM coexistence.agent_runs WHERE id = $1 AND agent_id = $2`,
       [req.params.runId, req.params.id],
@@ -725,6 +788,9 @@ const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize
 // the reply text + the per-step trace.
 router.post('/agents/:id/test', adminOnly, async (req, res) => {
   try {
+    if (!(await ensureAgentAccess(req.params.id, req.orgId))) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
     const messages = req.body?.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages must be a non-empty array of {role,content}' });
@@ -742,6 +808,9 @@ router.post('/agents/:id/test', adminOnly, async (req, res) => {
 router.post('/agents/:id/test/transcribe', adminOnly, audioUpload.single('audio'), async (req, res) => {
   let tmpPath = null;
   try {
+    if (!(await ensureAgentAccess(req.params.id, req.orgId))) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
     if (!req.file?.buffer?.length) return res.status(400).json({ error: 'No audio uploaded' });
     const mime = req.file.mimetype || '';
     const ext = mime.includes('ogg') ? 'ogg'

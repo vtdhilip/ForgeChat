@@ -404,7 +404,7 @@ router.post('/switch', async (req, res) => {
 });
 
 // ── GET /api/organizations/:id ──────────────────────────────────────────────
-router.get('/:id', async (req, res) => {
+router.get('/:id', requireOrgRole('owner', 'admin', 'member', 'agent', 'viewer'), async (req, res) => {
   try {
     const orgId = req.params.id;
     const { rows } = await pool.query(
@@ -470,7 +470,7 @@ router.put('/:id', requireOrgRole('owner', 'admin'), async (req, res) => {
 
 // ── GET /api/organizations/:id/members ──────────────────────────────────────
 // List team members of an organization
-router.get('/:id/members', async (req, res) => {
+router.get('/:id/members', requireOrgRole('owner', 'admin', 'member', 'agent', 'viewer'), async (req, res) => {
   try {
     const orgId = req.params.id;
     const { rows } = await pool.query(
@@ -548,8 +548,15 @@ router.delete('/:id/members/:userId', requireOrgRole('owner', 'admin'), async (r
   }
 });
 
+// Mask sensitive secret strings for display in settings UI
+function maskSecret(val) {
+  if (!val || typeof val !== 'string') return '';
+  if (val.length <= 8) return '••••••••';
+  return val.slice(0, 3) + '••••••••' + val.slice(-4);
+}
+
 // ── GET /api/organizations/:id/integrations ──────────────────────────────
-router.get('/:id/integrations', async (req, res) => {
+router.get('/:id/integrations', requireOrgRole('owner', 'admin'), async (req, res) => {
   try {
     const orgId = req.params.id;
     const { rows } = await pool.query(
@@ -562,15 +569,15 @@ router.get('/:id/integrations', async (req, res) => {
     res.json({
       integrations: {
         razorpay_key_id: s.razorpay_key_id || process.env.RAZORPAY_KEY_ID || '',
-        razorpay_key_secret: s.razorpay_key_secret || process.env.RAZORPAY_KEY_SECRET || '',
+        razorpay_key_secret: maskSecret(s.razorpay_key_secret || process.env.RAZORPAY_KEY_SECRET || ''),
         shiprocket_email: s.shiprocket_email || process.env.SHIPROCKET_EMAIL || '',
-        shiprocket_password: s.shiprocket_password || process.env.SHIPROCKET_PASSWORD || '',
-        shiprocket_token: s.shiprocket_token || process.env.SHIPROCKET_API_TOKEN || '',
+        shiprocket_password: maskSecret(s.shiprocket_password || process.env.SHIPROCKET_PASSWORD || ''),
+        shiprocket_token: maskSecret(s.shiprocket_token || process.env.SHIPROCKET_API_TOKEN || ''),
         shiprocket_pickup_location: s.shiprocket_pickup_location || process.env.SHIPROCKET_PICKUP_LOCATION || 'warehouse',
         google_sheet_webhook_url: s.google_sheet_webhook_url || process.env.GOOGLE_SHEET_WEBHOOK_URL || '',
         whatsapp_flow_id: s.whatsapp_flow_id || process.env.WHATSAPP_FLOW_ID || '',
-        openai_api_key: s.openai_api_key || process.env.OPENAI_API_KEY || '',
-        anthropic_api_key: s.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '',
+        openai_api_key: maskSecret(s.openai_api_key || process.env.OPENAI_API_KEY || ''),
+        anthropic_api_key: maskSecret(s.anthropic_api_key || process.env.ANTHROPIC_API_KEY || ''),
         order_prefix: s.order_prefix || 'LN-',
         shipping_fee: s.shipping_fee || 60,
       }
@@ -593,9 +600,19 @@ router.put('/:id/integrations', requireOrgRole('owner', 'admin'), async (req, re
     if (current.length === 0) return res.status(404).json({ error: 'Organization not found' });
 
     const existingSettings = current[0].settings || {};
+    const sanitizedIncoming = { ...incoming };
+
+    // Do not overwrite existing secrets with masked placeholders
+    const secretKeys = ['razorpay_key_secret', 'shiprocket_password', 'shiprocket_token', 'openai_api_key', 'anthropic_api_key'];
+    for (const key of secretKeys) {
+      if (typeof sanitizedIncoming[key] === 'string' && sanitizedIncoming[key].includes('••••')) {
+        delete sanitizedIncoming[key];
+      }
+    }
+
     const updatedSettings = {
       ...existingSettings,
-      ...incoming,
+      ...sanitizedIncoming,
     };
 
     await pool.query(
@@ -605,14 +622,14 @@ router.put('/:id/integrations', requireOrgRole('owner', 'admin'), async (req, re
       [JSON.stringify(updatedSettings), orgId]
     );
 
-    res.json({ success: true, message: 'Integration settings saved successfully', settings: updatedSettings });
+    res.json({ success: true, message: 'Integration settings saved successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ── POST /api/organizations/:id/integrations/test ─────────────────────────
-router.post('/:id/integrations/test', async (req, res) => {
+router.post('/:id/integrations/test', requireOrgRole('owner', 'admin'), async (req, res) => {
   try {
     const { type, credentials } = req.body;
     if (type === 'shiprocket') {

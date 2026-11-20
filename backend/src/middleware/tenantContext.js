@@ -91,13 +91,44 @@ async function tenantContext(req, res, next) {
 
 /**
  * Middleware to restrict route to specific organization roles (e.g. 'owner', 'admin')
+ * BOLA protection: If the route includes :id or :orgId, verifies the user has the required
+ * role specifically for that target organization, not just their active session org.
  */
 function requireOrgRole(...allowedRoles) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
     
     // Super-admins bypass org role checks
     if (req.user.role === 'admin') return next();
+
+    const targetOrgId = req.params?.orgId || req.params?.id;
+
+    if (targetOrgId) {
+      // If targeting current active org, check active orgRole
+      if (req.orgId && (String(req.orgId) === String(targetOrgId) || (req.org && req.org.slug === targetOrgId))) {
+        if (!req.orgRole || !allowedRoles.includes(req.orgRole)) {
+          return res.status(403).json({ error: 'Forbidden: Insufficient organization permissions' });
+        }
+        return next();
+      }
+
+      // Check membership directly for the target organization in DB
+      try {
+        const { rows } = await pool.query(
+          `SELECT om.role FROM coexistence.organization_members om
+           JOIN coexistence.organizations o ON o.id = om.org_id
+           WHERE (o.id::text = $1 OR o.slug = $1) AND om.user_id = $2`,
+          [targetOrgId, req.user.id]
+        );
+        if (rows.length === 0 || !allowedRoles.includes(rows[0].role)) {
+          return res.status(403).json({ error: 'Forbidden: Insufficient organization permissions' });
+        }
+        return next();
+      } catch (err) {
+        console.error('[tenantContext] requireOrgRole error:', err.message);
+        return res.status(500).json({ error: 'Permission check failed' });
+      }
+    }
 
     if (!req.orgRole || !allowedRoles.includes(req.orgRole)) {
       return res.status(403).json({ error: 'Forbidden: Insufficient organization permissions' });

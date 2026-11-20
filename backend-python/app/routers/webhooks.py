@@ -141,7 +141,9 @@ async def process_whatsapp_webhook(request: Request):
     if sig is False:
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
     if sig is None:
-        pass  # In dev without META_APP_SECRET configured, accept but log in production
+        if os.getenv("NODE_ENV") == "production" or os.getenv("ENVIRONMENT") == "production" or os.getenv("ENFORCE_WEBHOOK_SIGNATURE") == "true":
+            raise HTTPException(status_code=503, detail="Webhook signature verification unavailable")
+        # In dev without META_APP_SECRET configured, allow with warning
 
     if not valid_json:
         return {"ok": True, "stored": 0}

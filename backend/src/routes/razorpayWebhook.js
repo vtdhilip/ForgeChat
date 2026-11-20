@@ -118,14 +118,16 @@ router.post('/', async (req, res) => {
 
   console.log(`[razorpay-webhook] Inbound request from ${req.ip} (hasSignature=${!!signature}, hasSecret=${!!webhookSecret})`);
 
-  // Verify signature if secret is configured
-  if (webhookSecret) {
-    if (!verifyRazorpaySignature(rawBody, signature, webhookSecret)) {
-      console.warn('[razorpay-webhook] Signature verification failed — rejecting request');
-      return res.status(400).json({ error: 'Invalid signature' });
+  // Verify signature if secret is configured (fail closed in production)
+  if (!webhookSecret) {
+    if (process.env.NODE_ENV === 'production' || process.env.ENFORCE_WEBHOOK_SIGNATURE !== 'false') {
+      console.warn('[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET not set — rejecting unverified payment webhook');
+      return res.status(503).json({ error: 'Webhook secret not configured' });
     }
-  } else {
-    console.log('[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET not set in .env — accepting request without verification');
+    console.warn('[razorpay-webhook] RAZORPAY_WEBHOOK_SECRET not set in .env — accepting request without verification (dev only)');
+  } else if (!verifyRazorpaySignature(rawBody, signature, webhookSecret)) {
+    console.warn('[razorpay-webhook] Signature verification failed — rejecting request');
+    return res.status(400).json({ error: 'Invalid signature' });
   }
 
   let event;

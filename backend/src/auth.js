@@ -197,7 +197,12 @@ router.post('/auth/login', async (req, res) => {
       [email.trim().toLowerCase()]
     );
     const user = rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    // Timing attack mitigation: always execute bcrypt.compare even if user does not exist
+    const DUMMY_HASH = '$2a$10$wN9Qj0sZ9K/6.mP2cE6CeezU2B9r7H0qJd1cT0tB5a8yK3wJzV5mi';
+    const hashToCompare = user ? user.password : DUMMY_HASH;
+    const isPasswordValid = await bcrypt.compare(password, hashToCompare);
+
+    if (!user || !isPasswordValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     if (user.is_active === false) {

@@ -59,13 +59,13 @@ function resolveVariables(text, context) {
   const cartSummary = context.trigger_data?.cart_summary || (orderData ? lastMsg : null);
   const productText = cartSummary || contact.custom_fields?.product || lastMsg;
 
-  const rawSubtotalNum = orderData?.total_amount || 359.00;
-  const subtotalStr = context.extra_lookup?.subtotal || (rawSubtotalNum ? rawSubtotalNum.toFixed(2) : '359.00');
-  const shippingStr = context.extra_lookup?.shipping_fee || '60.00';
+  const rawSubtotalNum = orderData?.total_amount != null ? Number(orderData.total_amount) : (context.extra_lookup?.subtotal ? parseFloat(context.extra_lookup.subtotal) : 0);
+  const subtotalStr = context.extra_lookup?.subtotal || (rawSubtotalNum ? rawSubtotalNum.toFixed(2) : '0.00');
+  const shippingStr = context.extra_lookup?.shipping_fee || '0.00';
   const totalNum = parseFloat(subtotalStr) + parseFloat(shippingStr);
-  const orderTotalStr = context.extra_lookup?.order_total || totalNum.toFixed(2);
-  const orderNumStr = context.extra_lookup?.order_number || 'LN-1001';
-  const payLinkStr = context.extra_lookup?.payment_link || `https://rzp.io/l/pay-${orderNumStr.toLowerCase()}`;
+  const orderTotalStr = context.extra_lookup?.order_total || (totalNum ? totalNum.toFixed(2) : '0.00');
+  const orderNumStr = context.extra_lookup?.order_number || orderData?.order_id || '';
+  const payLinkStr = context.extra_lookup?.payment_link || (orderNumStr ? `https://rzp.io/l/pay-${orderNumStr.toLowerCase()}` : '');
 
   const lookup = {
     name: displayName,

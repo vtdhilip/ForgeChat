@@ -7,6 +7,7 @@ from app.core.database import db
 from app.core.security import hash_password
 from app.core.permissions import PAGES, ROLE_PAGE_DEFAULTS
 from app.middleware.tenant import require_org_admin
+from app.middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -280,3 +281,27 @@ async def reset_password(user_id: int, payload: ResetPasswordRequest, tenant_ctx
     hashed_pw = hash_password(new_pw)
     await db.execute("UPDATE coexistence.forgecrm_users SET password = $1, updated_at = NOW() WHERE id = $2", hashed_pw, user_id)
     return {"ok": True, "password": new_pw if not payload.password else None}
+
+team_members_router = APIRouter(prefix="/api/team-members", tags=["Team Members"])
+
+@team_members_router.get("")
+async def list_team_members(user: dict = Depends(get_current_user)):
+    rows = await db.fetch(
+        """
+        SELECT id, name, phone_number, bda_id, address, email
+        FROM coexistence.team_members
+        ORDER BY id ASC
+        """
+    )
+    return [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "phone": r["phone_number"],
+            "bda_id": r["bda_id"],
+            "address": r["address"],
+            "email": r["email"],
+            "avail": "online",
+        }
+        for r in rows
+    ]

@@ -425,7 +425,7 @@ function DealModal({ deal, defaultStageId, pipeline, stages, isAdmin, onClose, o
             <SearchableSelect
               value={form.assignedUserId || ''}
               onChange={(val) => setForm({ ...form, assignedUserId: val ? Number(val) : '' })}
-              options={[{ value: '', label: 'Unassigned' }, ...users.map(u => ({ value: String(u.id), label: `${u.displayName || u.username}${u.role === 'admin' || u.role === 'org_admin' ? ' (admin)' : ''}` }))]}
+              options={[{ value: '', label: 'Unassigned' }, ...users.map(u => ({ value: String(u.id), label: `${u.displayName || u.username}${isOrgAdmin(u) ? ' (admin)' : ''}` }))]}
               placeholder="Unassigned"
               searchPlaceholder="Search users…"
             />

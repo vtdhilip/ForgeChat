@@ -13,12 +13,21 @@
  */
 
 const { Router } = require('express');
+const crypto = require('crypto');
 const pool = require('../db');
 const { enqueueSend } = require('../queue/sendQueue');
 const { updateOrderPaymentInGoogleSheet } = require('../services/googleSheets');
 const { ensureOrdersTable } = require('../services/checkout');
 
 const router = Router();
+
+// Constant-time token verification via SHA-256 digests (prevents length timing leaks)
+function verifyWebhookToken(suppliedToken, expectedToken) {
+  if (!suppliedToken || !expectedToken) return false;
+  const hashA = crypto.createHash('sha256').update(String(suppliedToken).trim()).digest();
+  const hashB = crypto.createHash('sha256').update(String(expectedToken).trim()).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
 
 // Helper to format clean phone
 function cleanPhone(phone) {
@@ -29,6 +38,20 @@ function cleanPhone(phone) {
 
 // ─── POST /api/shiprocket/webhook ───────────────────────────────────────────
 router.post('/', async (req, res) => {
+  // Webhook Authentication
+  const expectedToken = (process.env.SHIPROCKET_WEBHOOK_TOKEN || process.env.LOGISTICS_WEBHOOK_SECRET || '').trim();
+  const suppliedToken = req.headers['x-shiprocket-token'] || req.headers['x-api-key'] || req.query.token || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : '');
+
+  if (expectedToken) {
+    if (!verifyWebhookToken(suppliedToken, expectedToken)) {
+      console.warn('[shiprocket-webhook] Unauthorized webhook call - invalid token');
+      return res.status(401).json({ error: 'Unauthorized: invalid webhook token' });
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    console.warn('[shiprocket-webhook] Webhook secret not configured in production');
+    return res.status(503).json({ error: 'Webhook verification unavailable' });
+  }
+
   await ensureOrdersTable();
 
   let body = req.body;
@@ -100,9 +123,15 @@ router.post('/', async (req, res) => {
     }
 
     // 4. Send WhatsApp Notification to Customer (via Template to work outside 24h window)
-    const targetPhone = order?.contact_number || cleanPhone(body.customer_phone || body.phone);
-    const targetName = order?.contact_name || body.customer_name || 'Customer';
-    const waNumber = order?.wa_number || null;
+    // Only send notification if order exists in database (prevents arbitrary phone relay)
+    if (!order) {
+      console.log(`[shiprocket-webhook] Order ${orderNumber || awb} not found in DB - skipping customer notification`);
+      return res.status(200).json({ status: 'ok', order_number: orderNumber, current_status: normalizedStatus, order_found: false });
+    }
+
+    const targetPhone = order.contact_number;
+    const targetName = order.contact_name || body.customer_name || 'Customer';
+    const waNumber = order.wa_number || null;
 
     if (targetPhone) {
       let acctQuery = `SELECT id FROM coexistence.whatsapp_accounts WHERE is_active = true`;

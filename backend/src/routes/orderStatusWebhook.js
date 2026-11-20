@@ -9,11 +9,20 @@
  */
 
 const { Router } = require('express');
+const crypto = require('crypto');
 const pool = require('../db');
 const { enqueueSend } = require('../queue/sendQueue');
 const { ensureOrdersTable } = require('../services/checkout');
 
 const router = Router();
+
+// Constant-time token verification via SHA-256 digests (prevents length timing leaks)
+function verifyWebhookToken(suppliedToken, expectedToken) {
+  if (!suppliedToken || !expectedToken) return false;
+  const hashA = crypto.createHash('sha256').update(String(suppliedToken).trim()).digest();
+  const hashB = crypto.createHash('sha256').update(String(expectedToken).trim()).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
 
 // Helper to format clean phone number
 function cleanPhone(phone) {
@@ -87,6 +96,20 @@ function buildStatusMessage({ status, orderNumber, customerName, courier, tracki
 
 // ─── POST /api/orders/sheet-status-update ───────────────────────────────────
 router.post('/sheet-status-update', async (req, res) => {
+  // Webhook Authentication
+  const expectedToken = (process.env.ORDER_WEBHOOK_SECRET || process.env.GOOGLE_SHEET_WEBHOOK_SECRET || '').trim();
+  const suppliedToken = req.headers['x-webhook-secret'] || req.headers['x-api-key'] || req.query.secret || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : '');
+
+  if (expectedToken) {
+    if (!verifyWebhookToken(suppliedToken, expectedToken)) {
+      console.warn('[order-status] Unauthorized status update call - invalid secret');
+      return res.status(401).json({ error: 'Unauthorized: invalid webhook secret' });
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    console.warn('[order-status] Webhook secret not configured in production');
+    return res.status(503).json({ error: 'Webhook verification unavailable' });
+  }
+
   await ensureOrdersTable();
 
   let body = req.body;
@@ -103,8 +126,8 @@ router.post('/sheet-status-update', async (req, res) => {
   const phoneFallback = cleanPhone(body.phone || body.contact_number);
   const nameFallback = String(body.customer_name || body.name || '').trim();
 
-  if (!orderNumber && !phoneFallback) {
-    return res.status(400).json({ error: 'order_number or phone is required' });
+  if (!orderNumber) {
+    return res.status(400).json({ error: 'order_number is required' });
   }
   if (!rawStatus && !customMessage) {
     return res.status(400).json({ error: 'status or custom_message is required' });
@@ -113,19 +136,19 @@ router.post('/sheet-status-update', async (req, res) => {
   console.log(`[order-status] Received update for Order #${orderNumber || 'unknown'}: status="${rawStatus}", courier="${courier}", tracking="${trackingNumber}"`);
 
   try {
-    // 1. Look up existing order in DB
-    let order = null;
-    if (orderNumber) {
-      const { rows } = await pool.query(
-        `SELECT * FROM coexistence.orders WHERE order_number = $1 LIMIT 1`,
-        [orderNumber]
-      );
-      if (rows.length > 0) order = rows[0];
+    // 1. Look up existing order in DB (notifications are restricted to verified orders)
+    const { rows } = await pool.query(
+      `SELECT * FROM coexistence.orders WHERE order_number = $1 LIMIT 1`,
+      [orderNumber]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: `Order #${orderNumber} not found` });
     }
+    const order = rows[0];
 
-    const targetPhone = order?.contact_number || phoneFallback;
-    const targetName = order?.contact_name || nameFallback || 'Customer';
-    const waNumber = order?.wa_number || null;
+    const targetPhone = order.contact_number;
+    const targetName = order.contact_name || nameFallback || 'Customer';
+    const waNumber = order.wa_number || null;
 
     if (!targetPhone) {
       console.warn(`[order-status] No contact phone number found for order ${orderNumber}`);
@@ -243,6 +266,22 @@ router.post('/sheet-status-update', async (req, res) => {
 
 // ─── POST /api/orders/sync-shiprocket ─────────────────────────────────────────
 router.post('/sync-shiprocket', async (req, res) => {
+  // Webhook Authentication or Authenticated User
+  const expectedToken = (process.env.ORDER_WEBHOOK_SECRET || process.env.GOOGLE_SHEET_WEBHOOK_SECRET || '').trim();
+  const suppliedToken = req.headers['x-webhook-secret'] || req.headers['x-api-key'] || req.query.secret || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : '');
+
+  const isTokenValid = expectedToken && verifyWebhookToken(suppliedToken, expectedToken);
+  const isAuthenticated = req.user && (req.user.role === 'admin' || req.orgRole === 'owner' || req.orgRole === 'admin');
+
+  if (!isTokenValid && !isAuthenticated) {
+    if (expectedToken) {
+      return res.status(401).json({ error: 'Unauthorized: valid secret or admin session required' });
+    }
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ error: 'Webhook verification unavailable' });
+    }
+  }
+
   await ensureOrdersTable();
   const { createShiprocketOrder, getShiprocketToken } = require('../services/shiprocket');
 

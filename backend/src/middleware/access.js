@@ -6,7 +6,6 @@
 const pool = require('../db');
 const { isAdmin, hasPermission } = require('../permissions');
 
-// adminOnly: simple gate on req.user.role
 function adminOnly(req, res, next) {
   if (!isAdmin(req.user)) {
     return res.status(403).json({ error: 'Admin access required' });
@@ -85,17 +84,37 @@ async function buildWaScope(req, tableAlias, startParamIndex) {
 }
 
 // Convenience: assert the current user has access to a specific wa_number.
-// Admin always passes. Non-admin: must have at least one assigned contact on
-// this wa_number (assigned_user_id = req.user.id). This is the *number-level*
-// visibility check — to also gate a specific conversation, use
-// `assertContactAccess(waNumber, contactNumber)` below.
+// Scoped to tenant organization if req.orgId is set.
 async function assertWaAccess(req, res, waNumber) {
-  if (isAdmin(req.user)) return true;
   const clean = String(waNumber || '').replace(/\D/g, '');
+  const params = [clean];
+  let orgClause = '';
+  if (req.orgId) {
+    params.push(req.orgId);
+    orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+  }
+
+  // Account check: ensure the WhatsApp account belongs to caller's org
+  if (req.orgId) {
+    const { rows: accRows } = await pool.query(
+      `SELECT 1 FROM coexistence.whatsapp_accounts
+        WHERE regexp_replace(display_phone_number, '[^0-9]', '', 'g') = $1
+          AND (org_id = $2 OR org_id IS NULL) LIMIT 1`,
+      [clean, req.orgId]
+    );
+    if (accRows.length === 0) {
+      res.status(403).json({ error: 'You do not have access to this WhatsApp number' });
+      return false;
+    }
+  }
+
+  if (isAdmin(req.user) || req.orgRole === 'owner' || req.orgRole === 'admin') return true;
+
+  params.push(req.user.id);
   const { rows } = await pool.query(
     `SELECT 1 FROM coexistence.contacts
-      WHERE wa_number = $1 AND assigned_user_id = $2 LIMIT 1`,
-    [clean, req.user.id]
+      WHERE wa_number = $1 ${orgClause} AND assigned_user_id = $${params.length} LIMIT 1`,
+    params
   );
   if (rows.length === 0) {
     res.status(403).json({ error: 'You do not have access to this WhatsApp number' });
@@ -104,16 +123,44 @@ async function assertWaAccess(req, res, waNumber) {
   return true;
 }
 
-// Per-conversation access: the (wa_number, contact_number) pair must be a
-// contact whose assigned_user_id matches the current user. Admin bypasses.
+// Per-conversation access: the (wa_number, contact_number) pair must belong to
+// the caller's active tenant and assigned user (if non-admin).
 async function assertContactAccess(req, res, waNumber, contactNumber) {
-  if (isAdmin(req.user)) return true;
   const cleanWa = String(waNumber || '').replace(/\D/g, '');
   const cleanContact = String(contactNumber || '').replace(/\D/g, '');
+  const params = [cleanWa, cleanContact];
+  let orgClause = '';
+  if (req.orgId) {
+    params.push(req.orgId);
+    orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+  }
+
+  // If org admin / global admin: must still belong to tenant's org if req.orgId is active
+  if (isAdmin(req.user) || req.orgRole === 'owner' || req.orgRole === 'admin') {
+    if (!req.orgId) return true;
+    const { rows } = await pool.query(
+      `SELECT 1 FROM coexistence.contacts
+        WHERE wa_number = $1 AND contact_number = $2 ${orgClause} LIMIT 1`,
+      params
+    );
+    if (rows.length === 0) {
+      const { rows: anyRows } = await pool.query(
+        `SELECT 1 FROM coexistence.contacts WHERE wa_number = $1 AND contact_number = $2 LIMIT 1`,
+        [cleanWa, cleanContact]
+      );
+      if (anyRows.length > 0) {
+        res.status(403).json({ error: 'You do not have access to this conversation' });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  params.push(req.user.id);
   const { rows } = await pool.query(
     `SELECT 1 FROM coexistence.contacts
-      WHERE wa_number = $1 AND contact_number = $2 AND assigned_user_id = $3 LIMIT 1`,
-    [cleanWa, cleanContact, req.user.id]
+      WHERE wa_number = $1 AND contact_number = $2 ${orgClause} AND assigned_user_id = $${params.length} LIMIT 1`,
+    params
   );
   if (rows.length === 0) {
     res.status(403).json({ error: 'You do not have access to this conversation' });

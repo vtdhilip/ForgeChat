@@ -8,7 +8,7 @@ from app.middleware.auth import get_current_user, require_permission
 
 router = APIRouter(prefix="/api/chatbots", tags=["Chatbots & Automations"])
 
-SUPPORTED_TYPES = {"trigger", "message", "condition", "delay", "action"}
+SUPPORTED_TYPES = {"trigger", "message", "condition", "delay", "action", "handoff", "subflow", "api", "ai"}
 
 def sanitize_to_linear(config: Any) -> Any:
     if not isinstance(config, dict):
@@ -32,6 +32,14 @@ def shape_bot(r: dict) -> dict:
         d["created_at"] = d["created_at"].isoformat()
     if d.get("updated_at"):
         d["updated_at"] = d["updated_at"].isoformat()
+    if d.get("config") and isinstance(d["config"], str):
+        try:
+            parsed = json.loads(d["config"])
+            if isinstance(parsed, str):
+                parsed = json.loads(parsed)
+            d["config"] = parsed
+        except Exception:
+            pass
     return d
 
 class ChatbotCreate(BaseModel):

@@ -8,6 +8,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal.jsx';
 import TagMultiSelect from '../components/TagMultiSelect.jsx';
 import { useTableSelection, SelectAllCheckbox, RowCheckbox, BulkDeleteButton, runBulkDelete } from '../components/TableSelection.jsx';
 import SearchableSelect from '../components/SearchableSelect.jsx';
+import { extractVars, resolvePreviewText } from '../utils/templateInterpolation.js';
 
 const FILTER_TABS = [
   { key: 'all', label: 'All' },
@@ -347,8 +348,7 @@ export default function BulkMessagePage({ onNavigate }) {
       return;
     }
     setAccountLookupDone(false);
-    fetch(`/api/whatsapp-accounts/by-phone/${encodeURIComponent(newBroadcastFrom)}`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
+    api.resolveAccountByPhone(newBroadcastFrom)
       .then(data => setLinkedAccount(data))
       .catch(() => setLinkedAccount(null))
       .finally(() => setAccountLookupDone(true));
@@ -596,28 +596,6 @@ export default function BulkMessagePage({ onNavigate }) {
   };
 
   // ─── New Broadcast Modal Helpers ────────────────────────────────────────────
-  // Extract template variables {{1}}, {{2}}, etc.
-  // Resolve template variables using mapping + first selected contact for live preview
-  const resolvePreviewText = (text, mapping, contact) => {
-    if (!text || !contact) return text || '';
-    return text.replace(/\{\{(\d+)\}\}/g, (_, v) => {
-      const field = mapping[v];
-      if (!field) return `{{${v}}}`;
-      if (field === 'name') return contact.name || `{{${v}}}`;
-      if (field === 'contact_number') return maskPhone(contact.contact_number) || `{{${v}}}`;
-      if (field.startsWith('custom_fields.')) {
-        const id = field.split('.')[1];
-        return contact.custom_fields?.[id] || `{{${v}}}`;
-      }
-      if (field.startsWith('category_tag.')) {
-        const catId = field.split('.')[1];
-        const tag = contact.tags?.find(t => t.category_id == catId);
-        return tag?.name || `{{${v}}}`;
-      }
-      // Anything else the user typed is literal "Custom text" — show it as-is.
-      return field || `{{${v}}}`;
-    });
-  };
 
   const selectedTemplate = templates.find(t => t.id.toString() === newBroadcastTemplateId);
   // 'image' | 'video' | 'document' when the selected template has a media header

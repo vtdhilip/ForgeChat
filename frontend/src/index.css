@@ -70,3 +70,11 @@ input, button, textarea, select {
 
 input, textarea, select { color: var(--c-text); }
 ::placeholder { color: var(--c-textMuted); opacity: 1; }
+
+@keyframes highlightFade {
+  0% { background-color: rgba(37, 211, 102, 0.25); border-radius: 8px; }
+  100% { background-color: transparent; }
+}
+.quoted-highlight {
+  animation: highlightFade 1.2s ease-out;
+}

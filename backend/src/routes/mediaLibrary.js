@@ -82,10 +82,14 @@ router.get('/media-library', async (req, res) => {
     const accountId = req.query.accountId ? parseInt(req.query.accountId, 10) : null;
     const params = [];
     let accFilter = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      accFilter += ` AND (org_id = $${params.length} OR org_id IS NULL)`;
+    }
     // Scope to the selected account, but also surface media that has no owner
     // yet (whatsapp_account_id IS NULL) — e.g. uploaded before any account was
     // connected — so it never becomes invisible. With no accountId, list all.
-    if (accountId) { params.push(accountId); accFilter = `AND (whatsapp_account_id = $${params.length} OR whatsapp_account_id IS NULL)`; }
+    if (accountId) { params.push(accountId); accFilter += ` AND (whatsapp_account_id = $${params.length} OR whatsapp_account_id IS NULL)`; }
     const { rows: media } = await pool.query(`
       SELECT * FROM coexistence.media_library
        WHERE deleted_at IS NULL ${accFilter}
@@ -156,12 +160,12 @@ router.post('/media-library', requirePermission('media-library'), upload.single(
     const { rows } = await pool.query(`
       INSERT INTO coexistence.media_library
         (filename, original_name, name, mime_type, size_bytes, media_type,
-         storage_backend, storage_key, sha256, notes, uploaded_by, whatsapp_account_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         storage_backend, storage_key, sha256, notes, uploaded_by, whatsapp_account_id, org_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING *
     `, [
       stored, originalname, name, canonMime, size, mediaType,
-      storage.bucketName(), objectKey, sha, notes, req.user?.id || null, accountId,
+      storage.bucketName(), objectKey, sha, notes, req.user?.id || null, accountId, req.orgId || null,
     ]);
     res.json({ media: rowToMedia(rows[0]) });
   } catch (err) {
@@ -182,10 +186,17 @@ router.put('/media-library/:id', requirePermission('media-library'), async (req,
     if (name !== undefined)       { fields.push(`name = $${i++}`);        vals.push(name ? name.toString().slice(0, 255) : null); }
     if (notes !== undefined)      { fields.push(`notes = $${i++}`);       vals.push(notes); }
     if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+    const idParamIndex = i++;
     vals.push(id);
+    let orgFilter = '';
+    if (req.orgId) {
+      const orgParamIndex = i++;
+      vals.push(req.orgId);
+      orgFilter = `AND (org_id = $${orgParamIndex} OR org_id IS NULL)`;
+    }
     const { rows } = await pool.query(
       `UPDATE coexistence.media_library SET ${fields.join(', ')}
-        WHERE id = $${i} AND deleted_at IS NULL RETURNING *`,
+        WHERE id = $${idParamIndex} AND deleted_at IS NULL ${orgFilter} RETURNING *`,
       vals
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
@@ -200,12 +211,18 @@ router.put('/media-library/:id', requirePermission('media-library'), async (req,
 router.delete('/media-library/:id', requirePermission('media-library'), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
+    const params = [id];
+    let orgFilter = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      orgFilter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    }
     const { rows } = await pool.query(
       `UPDATE coexistence.media_library
           SET deleted_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
+        WHERE id = $1 AND deleted_at IS NULL ${orgFilter}
         RETURNING storage_key`,
-      [id]
+      params
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     await storage.removeObject(rows[0].storage_key);
@@ -220,10 +237,16 @@ router.delete('/media-library/:id', requirePermission('media-library'), async (r
 router.get('/media-library/:id/download', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
+    const params = [id];
+    let orgFilter = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      orgFilter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    }
     const { rows } = await pool.query(
       `SELECT storage_key, mime_type, original_name, name
-         FROM coexistence.media_library WHERE id = $1 AND deleted_at IS NULL`,
-      [id]
+         FROM coexistence.media_library WHERE id = $1 AND deleted_at IS NULL ${orgFilter}`,
+      params
     );
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
     const buf = await storage.getObjectBuffer(rows[0].storage_key);

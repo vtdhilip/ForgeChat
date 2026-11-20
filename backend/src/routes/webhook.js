@@ -326,6 +326,10 @@ router.post('/webhook/whatsapp', async (req, res) => {
       return res.status(403).json({ error: 'Invalid webhook signature' });
     }
     if (sig === null) {
+      if (process.env.NODE_ENV === 'production' || process.env.ENFORCE_WEBHOOK_SIGNATURE === 'true') {
+        console.error('[webhook] META_APP_SECRET not set in production — rejecting unverified inbound webhook.');
+        return res.status(503).json({ error: 'Webhook signature verification unavailable' });
+      }
       console.warn('[webhook] META_APP_SECRET not set — inbound webhook signature NOT verified (set it to reject forged payloads).');
     }
 

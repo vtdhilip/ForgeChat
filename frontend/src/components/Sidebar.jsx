@@ -61,6 +61,7 @@ export default function Sidebar({ activePage, onPageChange, collapsed, setCollap
           return (
             <div
               key={item.id}
+              data-nav={item.id}
               onClick={() => onPageChange(item.id)}
               title={collapsed ? item.label : ''}
               style={{

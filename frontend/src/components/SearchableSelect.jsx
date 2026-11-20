@@ -78,9 +78,40 @@ export default function SearchableSelect({
 
   return (
     <div ref={ref} style={{ position: 'relative', ...style }}>
+      <select
+        aria-hidden="true"
+        tabIndex={-1}
+        value={value !== undefined && value !== null ? String(value) : ''}
+        onChange={e => {
+          if (!onChange) return;
+          const match = options.find(o => String(o.value) === e.target.value);
+          onChange(match !== undefined ? match.value : e.target.value);
+        }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0.0001,
+          pointerEvents: 'none',
+          zIndex: -1,
+        }}
+      >
+        {placeholder && !options.some(o => o.value === '' || o.value === null || o.value === undefined) && (
+          <option value="">{placeholder}</option>
+        )}
+        {options.map((o, idx) => (
+          <option key={o.value !== undefined ? String(o.value) : idx} value={o.value !== undefined ? String(o.value) : ''}>
+            {typeof o.label === 'string' ? o.label : String(o.label || '')}
+          </option>
+        ))}
+      </select>
       <button
         type="button"
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => !disabled && setOpen(o => !o)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 8,
@@ -127,7 +158,7 @@ export default function SearchableSelect({
           )}
 
           {/* Options */}
-          <div style={{ maxHeight: 240, overflowY: 'auto', padding: 6 }}>
+          <div role="listbox" style={{ maxHeight: 240, overflowY: 'auto', padding: 6 }}>
             {filtered.length === 0 ? (
               <div style={{ padding: '10px 8px', color: C.textMuted, fontSize: 12 }}>{emptyText}</div>
             ) : filtered.map(o => {
@@ -135,6 +166,8 @@ export default function SearchableSelect({
               return (
                 <div
                   key={o.value}
+                  role="option"
+                  aria-selected={on}
                   onClick={() => choose(o.value)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px',

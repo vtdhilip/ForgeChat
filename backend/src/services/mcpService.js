@@ -57,13 +57,17 @@ async function loadSettings() {
   return { masterEnabled: !!r.master_enabled, capabilities: r.capabilities || {} };
 }
 
-// Validate a raw bearer key. Returns { capabilities, keyId } on success.
+// Validate a raw bearer key. Returns { capabilities, keyId, orgId } on success.
 // Throws { status, message } on any failure so callers map to HTTP codes.
 async function validateKey(rawKey) {
   const key = String(rawKey || '').trim();
   if (!key) { const e = new Error('Missing API key'); e.status = 401; throw e; }
   const { rows } = await pool.query(
-    'SELECT * FROM coexistence.mcp_api_keys WHERE key_hash = $1',
+    `SELECT k.*, om.org_id
+       FROM coexistence.mcp_api_keys k
+       LEFT JOIN coexistence.organization_members om ON om.user_id = k.created_by
+      WHERE k.key_hash = $1
+      ORDER BY om.created_at ASC LIMIT 1`,
     [hashApiKey(key)],
   );
   const row = rows[0];
@@ -71,15 +75,22 @@ async function validateKey(rawKey) {
   const settings = await loadSettings();
   if (!settings.masterEnabled) { const e = new Error('MCP access is disabled'); e.status = 403; throw e; }
   pool.query('UPDATE coexistence.mcp_api_keys SET last_used_at = NOW() WHERE id = $1', [row.id]).catch(() => {});
-  return { keyId: row.id, capabilities: settings.capabilities };
+  return { keyId: row.id, capabilities: settings.capabilities, orgId: row.org_id || null };
 }
 
 /* ------------------------------ discovery ------------------------------- */
 
-async function listWaAccounts() {
+async function listWaAccounts(orgId = null) {
+  const params = [];
+  let filter = '';
+  if (orgId) {
+    params.push(orgId);
+    filter = `WHERE (org_id = $1 OR org_id IS NULL)`;
+  }
   const { rows } = await pool.query(
     `SELECT id, display_name, display_phone_number, is_active, is_default
-       FROM coexistence.whatsapp_accounts ORDER BY is_default DESC, display_name`,
+       FROM coexistence.whatsapp_accounts ${filter} ORDER BY is_default DESC, display_name`,
+    params,
   );
   return rows.map(r => ({
     id: r.id,
@@ -108,10 +119,17 @@ async function listModels() {
 // Forge-Chat's Google integration is PER-ACCOUNT: spreadsheets/tabs are listed
 // against a connected Google account (oauth_credentials id). So the MCP flow
 // first lists accounts, then lists that account's spreadsheets, then its tabs.
-async function listGoogleAccounts() {
+async function listGoogleAccounts(orgId = null) {
+  const params = [];
+  let filter = '';
+  if (orgId) {
+    params.push(orgId);
+    filter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+  }
   const { rows } = await pool.query(
     `SELECT id, account_label, health_status FROM coexistence.oauth_credentials
-      WHERE provider = 'google' ORDER BY created_at DESC`,
+      WHERE provider = 'google' ${filter} ORDER BY created_at DESC`,
+    params,
   );
   return rows.map(r => ({ id: r.id, label: r.account_label, status: r.health_status }));
 }
@@ -158,26 +176,40 @@ async function readSheetValues({ googleAccountId, spreadsheetId, tab, range, max
   };
 }
 
-async function listMedia(type, name) {
+async function listMedia(type, name, orgId = null) {
+  const params = [type || null, name ? `%${name}%` : null];
+  let filter = '';
+  if (orgId) {
+    params.push(orgId);
+    filter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+  }
   const { rows } = await pool.query(
     `SELECT id, name, original_name, mime_type, media_type
        FROM coexistence.media_library
       WHERE ($1::text IS NULL OR media_type = $1)
         AND ($2::text IS NULL OR name ILIKE $2 OR original_name ILIKE $2)
+        ${filter}
       ORDER BY uploaded_at DESC LIMIT 200`,
-    [type || null, name ? `%${name}%` : null],
+    params,
   );
   return rows.map(r => ({ id: r.id, name: r.name || r.original_name, mimeType: r.mime_type, mediaType: r.media_type }));
 }
 
-async function listTemplates(waAccountId) {
+async function listTemplates(waAccountId, orgId = null) {
   const waId = waAccountId != null && waAccountId !== '' ? parseInt(waAccountId, 10) : null;
+  const params = [waId];
+  let filter = '';
+  if (orgId) {
+    params.push(orgId);
+    filter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+  }
   const { rows } = await pool.query(
     `SELECT id, name, language, status, category, whatsapp_account_id
        FROM coexistence.message_templates
       WHERE ($1::bigint IS NULL OR whatsapp_account_id = $1)
+        ${filter}
       ORDER BY name`,
-    [waId],
+    params,
   );
   return rows.map(r => ({
     id: r.id, name: r.name, language: r.language, status: r.status,

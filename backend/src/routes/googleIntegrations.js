@@ -153,6 +153,15 @@ router.post('/google-integrations/authorize', async (req, res) => {
     }
     const nonce = crypto.randomBytes(16).toString('hex');
     const url = await buildAuthUrl({ userId: req.user.id, nonce });
+
+    // Store nonce in an HTTP-only SameSite=Lax cookie to protect against CSRF attacks
+    res.cookie('g_oauth_nonce', nonce, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 10 * 60 * 1000,
+    });
+
     res.json({ authUrl: url });
   } catch (err) {
     console.error('[google-integrations] authorize error:', err.message);
@@ -181,6 +190,15 @@ publicRouter.get('/google-integrations/callback', async (req, res) => {
   if (!payload) {
     return res.redirect(frontendSettingsUrl({ status: 'error', error: 'Invalid or expired state' }));
   }
+
+  // Verify state nonce against session cookie to block CSRF
+  const cookieNonce = req.cookies?.g_oauth_nonce;
+  res.clearCookie('g_oauth_nonce');
+  if (!cookieNonce || cookieNonce !== payload.n) {
+    console.warn('[google-integrations] OAuth state nonce mismatch or missing cookie - potential CSRF');
+    return res.redirect(frontendSettingsUrl({ status: 'error', error: 'OAuth state nonce verification failed' }));
+  }
+
   try {
     const row = await handleCallback({ code: String(code), userId: payload.uid });
     res.redirect(frontendSettingsUrl({ status: 'connected', label: row.account_label }));

@@ -251,6 +251,18 @@ function ChatbotList({ chatbots, loading, onAdd, onEdit, onDelete, onDuplicate, 
   );
 }
 
+const normalizeBot = (b) => {
+  if (!b) return b;
+  let cfg = b.config;
+  if (typeof cfg === 'string') {
+    try { cfg = JSON.parse(cfg); } catch {}
+    if (typeof cfg === 'string') {
+      try { cfg = JSON.parse(cfg); } catch {}
+    }
+  }
+  return { ...b, config: (cfg && typeof cfg === 'object' && !Array.isArray(cfg)) ? cfg : { nodes: [], edges: [] } };
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ChatbotBuilderPage({ subParts = [], navigate }) {
   const [chatbots, setChatbots] = useState([]);
@@ -269,7 +281,7 @@ export default function ChatbotBuilderPage({ subParts = [], navigate }) {
     setLoading(true);
     try {
       const data = await api.chatbots.list();
-      setChatbots(data);
+      setChatbots((data || []).map(normalizeBot));
     } catch (err) {
       console.error('Failed to load automations:', err);
     } finally {
@@ -293,17 +305,17 @@ export default function ChatbotBuilderPage({ subParts = [], navigate }) {
       setEditingChatbot(null);
       return;
     }
-    if (editingChatbot?.id === routeId) return;
+    if (String(editingChatbot?.id) === String(routeId)) return;
     const found = chatbots.find(c => String(c.id) === String(routeId));
     if (found) {
-      setEditingChatbot(found);
+      setEditingChatbot(normalizeBot(found));
     } else if (chatbots.length > 0) {
       // Fall back to direct fetch if not in list (e.g. deleted, or list still loading)
       api.chatbots.get(routeId)
-        .then(data => setEditingChatbot(data))
+        .then(data => setEditingChatbot(normalizeBot(data)))
         .catch(() => navigate && navigate('chatbot-builder'));
     }
-  }, [routeId, chatbots]);
+  }, [routeId, chatbots, editingChatbot?.id]);
 
   const handleAdd = () => {
     setShowModal(true);
@@ -311,15 +323,21 @@ export default function ChatbotBuilderPage({ subParts = [], navigate }) {
 
   const handleModalCreate = (newAutomation) => {
     setShowModal(false);
-    setChatbots(prev => [newAutomation, ...prev]);
-    setEditingChatbot(newAutomation);
-    navigate && navigate('chatbot-builder', newAutomation.id);
+    const bot = normalizeBot(newAutomation);
+    setChatbots(prev => [bot, ...prev]);
+    setEditingChatbot(bot);
+    navigate && navigate('chatbot-builder', bot.id);
   };
 
-  const handleEdit = (chatbot) => {
-    setEditingChatbot(chatbot);
+  const handleEdit = async (chatbot) => {
     setBuilderTab('editor');
     navigate && navigate('chatbot-builder', chatbot.id);
+    try {
+      const fresh = await api.chatbots.get(chatbot.id);
+      setEditingChatbot(normalizeBot(fresh));
+    } catch {
+      setEditingChatbot(normalizeBot(chatbot));
+    }
   };
 
   const handleDelete = async (id) => {
@@ -372,7 +390,10 @@ export default function ChatbotBuilderPage({ subParts = [], navigate }) {
 
   const handleSaveBuilder = async ({ config }) => {
     if (!editingChatbot?.id) return;
-    await api.chatbots.update(editingChatbot.id, { config });
+    const updated = await api.chatbots.update(editingChatbot.id, { config });
+    const next = normalizeBot(updated && updated.id ? updated : { ...editingChatbot, config });
+    setEditingChatbot(next);
+    setChatbots(list => list.map(c => c.id === editingChatbot.id ? { ...c, ...next } : c));
   };
 
   const handleToggleStatus = async (nextStatus) => {
