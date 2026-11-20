@@ -100,11 +100,15 @@ const sheetUpload = multer({
 
 // Header alias matching for the import sheet — header names are normalised to
 // [a-z0-9] (case/punctuation-insensitive) before lookup.
-const IMPORT_NAME_ALIASES = new Set(['name', 'fullname', 'contactname', 'customername']);
+const IMPORT_NAME_ALIASES = new Set([
+  'name', 'fullname', 'contactname', 'customername',
+  'firstname', 'first', 'fname', 'first_name', 'contact', 'clientname', 'leadname',
+]);
 const IMPORT_PHONE_ALIASES = new Set([
   'phone', 'phonenumber', 'phoneno', 'mobile', 'mobilenumber', 'mobileno',
   'whatsapp', 'whatsappnumber', 'contactnumber', 'number', 'msisdn',
 ]);
+const IMPORT_TAG_ALIASES = new Set(['tag', 'tags', 'label', 'labels']);
 function pickImportColumn(row, aliases) {
   for (const key of Object.keys(row)) {
     const norm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
