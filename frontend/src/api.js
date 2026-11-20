@@ -57,10 +57,12 @@ export const api = {
   importContactsTemplateUrl: () => '/api/contacts/import/template',
   // Bulk-import contacts from a .csv/.xlsx file. Uses raw fetch + FormData so the
   // browser sets the multipart boundary (the shared req() helper forces JSON).
-  importContacts: (waNumber, file) => {
+  importContacts: (waNumber, file, options = {}) => {
     const form = new FormData();
     form.append('waNumber', waNumber);
     form.append('file', file);
+    if (options.tagId) form.append('tagId', options.tagId);
+    if (options.assignedUserId) form.append('assignedUserId', options.assignedUserId);
     return fetch('/api/contacts/import', { method: 'POST', credentials: 'include', body: form })
       .then(async res => {
         if (!res.ok) {
