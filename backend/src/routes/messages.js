@@ -480,6 +480,22 @@ router.post('/contacts/import', sheetUpload.single('file'), async (req, res) => 
     const skipped = [];
     const seen = new Set();
 
+    let selectedTag = null;
+    if (req.body.tagId && String(req.body.tagId).trim()) {
+      const { rows: tr } = await pool.query('SELECT id, name, color FROM coexistence.tags WHERE id = $1', [String(req.body.tagId).trim()]);
+      if (tr[0]) selectedTag = { id: tr[0].id, name: tr[0].name, color: tr[0].color };
+    }
+
+    let setAssign = false;
+    let assignVal = null;
+    if (!admin) {
+      setAssign = true;
+      assignVal = req.user.id;
+    } else if (req.body.assignedUserId && String(req.body.assignedUserId).trim()) {
+      setAssign = true;
+      assignVal = parseInt(req.body.assignedUserId, 10) || null;
+    }
+
     for (let i = 0; i < rows.length; i++) {
       const rowNum = i + 2; // +1 header, +1 for 1-based display
       const rawName = pickImportColumn(rows[i], IMPORT_NAME_ALIASES);
@@ -493,28 +509,48 @@ router.post('/contacts/import', sheetUpload.single('file'), async (req, res) => 
       if (seen.has(phone)) { skipped.push({ row: rowNum, reason: 'Duplicate phone in sheet' }); continue; }
       seen.add(phone);
 
-      let result;
-      if (admin) {
-        result = await pool.query(`
-          INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, updated_at)
-          VALUES ($1, $2, $3, '[]'::jsonb, '{}'::jsonb, NOW())
-          ON CONFLICT (wa_number, contact_number)
-          DO UPDATE SET name = COALESCE(EXCLUDED.name, coexistence.contacts.name), updated_at = NOW()
-          RETURNING (xmax = 0) AS inserted
-        `, [waNumber, phone, name]);
-      } else {
-        // New rows assign to the importing user; existing rows keep their current
-        // owner (COALESCE) so an import can't silently steal another user's contact.
-        result = await pool.query(`
-          INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, updated_at)
-          VALUES ($1, $2, $3, '[]'::jsonb, '{}'::jsonb, $4, NOW())
-          ON CONFLICT (wa_number, contact_number)
-          DO UPDATE SET name = COALESCE(EXCLUDED.name, coexistence.contacts.name),
-                        assigned_user_id = COALESCE(coexistence.contacts.assigned_user_id, EXCLUDED.assigned_user_id),
-                        updated_at = NOW()
-          RETURNING (xmax = 0) AS inserted
-        `, [waNumber, phone, name, req.user.id]);
+      const rowTags = selectedTag ? [{ id: selectedTag.id, name: selectedTag.name, color: selectedTag.color }] : [];
+      const rowCustomFields = {};
+
+      for (const [k, v] of Object.entries(rows[i])) {
+        if (!k) continue;
+        const normK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (IMPORT_NAME_ALIASES.has(normK) || IMPORT_PHONE_ALIASES.has(normK)) continue;
+        if (IMPORT_TAG_ALIASES.has(normK)) {
+          const tagStr = String(v || '').trim();
+          if (tagStr) {
+            const { rows: tr } = await pool.query('SELECT id, name, color FROM coexistence.tags WHERE LOWER(name) = LOWER($1) LIMIT 1', [tagStr]);
+            if (tr[0] && !rowTags.some(t => t.id === tr[0].id)) {
+              rowTags.push({ id: tr[0].id, name: tr[0].name, color: tr[0].color });
+            }
+          }
+        } else {
+          const valStr = String(v || '').trim();
+          if (valStr) rowCustomFields[k.trim()] = valStr;
+        }
       }
+
+      const result = await pool.query(`
+        INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, updated_at)
+        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, NOW())
+        ON CONFLICT (wa_number, contact_number)
+        DO UPDATE SET
+          name = COALESCE(EXCLUDED.name, coexistence.contacts.name),
+          tags = CASE
+            WHEN jsonb_array_length($4::jsonb) = 0 THEN coexistence.contacts.tags
+            ELSE (
+              SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+              FROM (
+                SELECT DISTINCT ON (COALESCE(elem->>'id', elem->>'name', elem::text)) elem
+                FROM jsonb_array_elements(COALESCE(coexistence.contacts.tags, '[]'::jsonb) || $4::jsonb) AS elem
+              ) s
+            )
+          END,
+          custom_fields = COALESCE(coexistence.contacts.custom_fields, '{}'::jsonb) || $5::jsonb,
+          assigned_user_id = CASE WHEN $7::boolean THEN $6 ELSE coexistence.contacts.assigned_user_id END,
+          updated_at = NOW()
+        RETURNING (xmax = 0) AS inserted
+      `, [waNumber, phone, name, JSON.stringify(rowTags), JSON.stringify(rowCustomFields), assignVal, setAssign]);
       if (result.rows[0]?.inserted) imported++; else updated++;
     }
 
