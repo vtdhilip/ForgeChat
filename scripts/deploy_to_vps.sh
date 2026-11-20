@@ -48,6 +48,9 @@ cd "${REPO_DIR}"
 echo "==> Fetching latest changes from origin..."
 git fetch origin
 
+echo "==> Stashing any local changes on VPS..."
+git stash 2>/dev/null || true
+
 echo "==> Checking out branch: ${BRANCH}..."
 git checkout "${BRANCH}" 2>/dev/null || git checkout -b "${BRANCH}" "origin/${BRANCH}"
 git pull origin "${BRANCH}"
