@@ -86,6 +86,8 @@ export default function ContactsPage({ user, onNavigate }) {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null); // { ok, imported, updated, skipped:[], total }
   const [importError, setImportError] = useState('');
+  const [importTagId, setImportTagId] = useState('');
+  const [importAssignedUserId, setImportAssignedUserId] = useState('');
 
   // Load numbers on mount
   useEffect(() => {
@@ -141,8 +143,8 @@ export default function ContactsPage({ user, onNavigate }) {
   const isAcceptedSheet = (file) =>
     !!file && ACCEPTED_IMPORT.some(ext => file.name.toLowerCase().endsWith(ext));
 
-  const openImport = () => { setImportFile(null); setImportResult(null); setImportError(''); setImportModal(true); };
-  const closeImport = () => { setImportModal(false); setImportFile(null); setImportResult(null); setImportError(''); };
+  const openImport = () => { setImportFile(null); setImportResult(null); setImportError(''); setImportTagId(''); setImportAssignedUserId(''); setImportModal(true); };
+  const closeImport = () => { setImportModal(false); setImportFile(null); setImportResult(null); setImportError(''); setImportTagId(''); setImportAssignedUserId(''); };
 
   const pickImportFile = (file) => {
     if (!file) return;
@@ -154,7 +156,10 @@ export default function ContactsPage({ user, onNavigate }) {
     if (!importFile || !selectedNumber) return;
     setImporting(true); setImportError('');
     try {
-      const res = await api.importContacts(selectedNumber, importFile);
+      const res = await api.importContacts(selectedNumber, importFile, {
+        tagId: importTagId || undefined,
+        assignedUserId: importAssignedUserId || undefined,
+      });
       setImportResult(res);
       loadContacts(true); // refresh the list after import
     } catch (err) {
@@ -774,6 +779,59 @@ export default function ContactsPage({ user, onNavigate }) {
                       </>
                     )}
                   </label>
+
+                  {/* Optional Label / Tag and Assigned User */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isOrgAdmin(user) && users.length > 0 ? '1fr 1fr' : '1fr', gap: 12, marginTop: 16 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSecondary, marginBottom: 6 }}>
+                        Apply Tag / Label (optional)
+                      </label>
+                      <select
+                        aria-label="Apply Tag / Label (optional)"
+                        value={importTagId}
+                        onChange={e => setImportTagId(e.target.value)}
+                        style={{
+                          width: '100%', padding: '9px 12px', borderRadius: 8,
+                          border: `1px solid ${C.border}`, background: 'var(--c-inputBg, #fff)',
+                          color: C.text, fontSize: 13, fontFamily: FONT, outline: 'none',
+                        }}
+                      >
+                        <option value="">No tag (leave untagged)</option>
+                        {tags.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                      <span style={{ display: 'block', fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                        Tagging this upload lets you easily filter them in Bulk Messages.
+                      </span>
+                    </div>
+
+                    {isOrgAdmin(user) && users.length > 0 && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: C.textSecondary, marginBottom: 6 }}>
+                          Assign to team member (optional)
+                        </label>
+                        <select
+                          aria-label="Assign to team member (optional)"
+                          value={importAssignedUserId}
+                          onChange={e => setImportAssignedUserId(e.target.value)}
+                          style={{
+                            width: '100%', padding: '9px 12px', borderRadius: 8,
+                            border: `1px solid ${C.border}`, background: 'var(--c-inputBg, #fff)',
+                            color: C.text, fontSize: 13, fontFamily: FONT, outline: 'none',
+                          }}
+                        >
+                          <option value="">Unassigned</option>
+                          {users.map(u => (
+                            <option key={u.id} value={u.id}>{u.name || u.email || `User #${u.id}`}</option>
+                          ))}
+                        </select>
+                        <span style={{ display: 'block', fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                          Assign all imported contacts to this user.
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
