@@ -349,6 +349,8 @@ async def get_import_template():
 async def import_contacts(
     waNumber: str = Form(...),
     file: UploadFile = File(...),
+    tagId: Optional[str] = Form(None),
+    assignedUserId: Optional[str] = Form(None),
     tenant_ctx: dict = Depends(get_tenant_context),
 ):
     user = tenant_ctx["user"]
@@ -397,16 +399,58 @@ async def import_contacts(
     skipped = []
     seen = set()
 
+    selected_tag = None
+    if tagId and str(tagId).strip():
+        tag_row = await db.fetchrow(
+            "SELECT id, name, color FROM coexistence.tags WHERE id = $1",
+            str(tagId).strip()
+        )
+        if tag_row:
+            selected_tag = {"id": tag_row["id"], "name": tag_row["name"], "color": tag_row["color"]}
+
+    target_assigned_user = None
+    set_assign = False
+    if not is_admin:
+        target_assigned_user = user["id"]
+        set_assign = True
+    elif assignedUserId is not None and str(assignedUserId).strip():
+        try:
+            target_assigned_user = int(assignedUserId)
+            set_assign = True
+        except (ValueError, TypeError):
+            pass
+
+    name_aliases = {"name", "fullname", "contactname", "customername", "firstname", "first", "fname", "firstname", "first_name", "contact", "clientname", "leadname"}
+    phone_aliases = {"phone", "phonenumber", "phoneno", "mobile", "mobilenumber", "mobileno", "whatsapp", "whatsappnumber", "contactnumber", "number", "msisdn"}
+    tag_aliases = {"tag", "tags", "label", "labels"}
+
     for idx, r in enumerate(rows):
         row_num = idx + 2
         name = ""
         phone = ""
+        row_tags = [dict(selected_tag)] if selected_tag else []
+        row_custom_fields = {}
+
         for k, v in r.items():
-            norm_k = re.sub(r"[^a-z0-9]", "", k.lower())
-            if norm_k in {"name", "fullname", "contactname", "customername"}:
+            if not k:
+                continue
+            norm_k = re.sub(r"[^a-z0-9]", "", str(k).lower())
+            if norm_k in name_aliases:
                 name = str(v or "").strip()
-            if norm_k in {"phone", "phonenumber", "phoneno", "mobile", "mobilenumber", "mobileno", "whatsapp", "whatsappnumber", "contactnumber", "number", "msisdn"}:
+            elif norm_k in phone_aliases:
                 phone = normalize_phone(v)
+            elif norm_k in tag_aliases:
+                tag_str = str(v or "").strip()
+                if tag_str:
+                    t_match = await db.fetchrow("SELECT id, name, color FROM coexistence.tags WHERE LOWER(name) = LOWER($1) LIMIT 1", tag_str)
+                    if t_match:
+                        t_obj = {"id": t_match["id"], "name": t_match["name"], "color": t_match["color"]}
+                        if not any(t["id"] == t_obj["id"] for t in row_tags):
+                            row_tags.append(t_obj)
+            else:
+                val_str = str(v or "").strip()
+                if val_str:
+                    row_custom_fields[str(k).strip()] = val_str
 
         if not phone:
             skipped.append({"row": row_num, "reason": "Missing phone number"})
@@ -422,30 +466,31 @@ async def import_contacts(
             continue
         seen.add(phone)
 
-        if is_admin:
-            res = await db.fetchrow(
-                """
-                INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, updated_at)
-                VALUES ($1, $2, $3, '[]'::jsonb, '{}'::jsonb, NOW())
-                ON CONFLICT (wa_number, contact_number)
-                DO UPDATE SET name = COALESCE(EXCLUDED.name, coexistence.contacts.name), updated_at = NOW()
-                RETURNING (xmax = 0) AS inserted
-                """,
-                clean_wa, phone, name
-            )
-        else:
-            res = await db.fetchrow(
-                """
-                INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, updated_at)
-                VALUES ($1, $2, $3, '[]'::jsonb, '{}'::jsonb, $4, NOW())
-                ON CONFLICT (wa_number, contact_number)
-                DO UPDATE SET name = COALESCE(EXCLUDED.name, coexistence.contacts.name),
-                              assigned_user_id = COALESCE(coexistence.contacts.assigned_user_id, EXCLUDED.assigned_user_id),
-                              updated_at = NOW()
-                RETURNING (xmax = 0) AS inserted
-                """,
-                clean_wa, phone, name, user["id"]
-            )
+        res = await db.fetchrow(
+            """
+            INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, updated_at)
+            VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, NOW())
+            ON CONFLICT (wa_number, contact_number)
+            DO UPDATE SET
+              name = COALESCE(EXCLUDED.name, coexistence.contacts.name),
+              tags = CASE
+                WHEN jsonb_array_length($4::jsonb) = 0 THEN coexistence.contacts.tags
+                ELSE (
+                  SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+                  FROM (
+                    SELECT DISTINCT ON (COALESCE(elem->>'id', elem->>'name', elem::text)) elem
+                    FROM jsonb_array_elements(COALESCE(coexistence.contacts.tags, '[]'::jsonb) || $4::jsonb) AS elem
+                  ) s
+                )
+              END,
+              custom_fields = COALESCE(coexistence.contacts.custom_fields, '{}'::jsonb) || $5::jsonb,
+              assigned_user_id = CASE WHEN $7::boolean THEN $6 ELSE coexistence.contacts.assigned_user_id END,
+              updated_at = NOW()
+            RETURNING (xmax = 0) AS inserted
+            """,
+            clean_wa, phone, name, json.dumps(row_tags), json.dumps(row_custom_fields), target_assigned_user, set_assign
+        )
+
         if res and res.get("inserted"):
             imported += 1
         else:
