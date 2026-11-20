@@ -409,20 +409,39 @@ async def import_contacts(
             selected_tag = {"id": tag_row["id"], "name": tag_row["name"], "color": tag_row["color"]}
 
     target_assigned_user = None
-    set_assign = False
+    admin_set_assign = False
     if not is_admin:
         target_assigned_user = user["id"]
-        set_assign = True
     elif assignedUserId is not None and str(assignedUserId).strip():
         try:
-            target_assigned_user = int(assignedUserId)
-            set_assign = True
+            parsed_uid = int(assignedUserId)
+            org_id = tenant_ctx.get("org_id")
+            if org_id:
+                user_exists = await db.fetchrow(
+                    """
+                    SELECT u.id FROM coexistence.forgecrm_users u
+                    JOIN coexistence.organization_members om ON om.user_id = u.id
+                    WHERE u.id = $1 AND om.org_id = $2::uuid AND u.is_active = TRUE
+                    """,
+                    parsed_uid, org_id
+                )
+            else:
+                user_exists = await db.fetchrow(
+                    "SELECT id FROM coexistence.forgecrm_users WHERE id = $1 AND is_active = TRUE",
+                    parsed_uid
+                )
+            if user_exists:
+                target_assigned_user = parsed_uid
+                admin_set_assign = True
         except (ValueError, TypeError):
             pass
 
-    name_aliases = {"name", "fullname", "contactname", "customername", "firstname", "first", "fname", "firstname", "first_name", "contact", "clientname", "leadname"}
+    name_aliases = {"name", "fullname", "contactname", "customername", "firstname", "first", "fname", "contact", "clientname", "leadname"}
     phone_aliases = {"phone", "phonenumber", "phoneno", "mobile", "mobilenumber", "mobileno", "whatsapp", "whatsappnumber", "contactnumber", "number", "msisdn"}
     tag_aliases = {"tag", "tags", "label", "labels"}
+
+    all_tags = await db.fetch("SELECT id, name, color FROM coexistence.tags")
+    tag_by_name = {t["name"].lower().strip(): {"id": t["id"], "name": t["name"], "color": t["color"]} for t in all_tags}
 
     for idx, r in enumerate(rows):
         row_num = idx + 2
@@ -436,16 +455,20 @@ async def import_contacts(
                 continue
             norm_k = re.sub(r"[^a-z0-9]", "", str(k).lower())
             if norm_k in name_aliases:
-                name = str(v or "").strip()
+                val = str(v or "").strip()
+                if val:
+                    name = val
             elif norm_k in phone_aliases:
-                phone = normalize_phone(v)
+                val = normalize_phone(v)
+                if val:
+                    phone = val
             elif norm_k in tag_aliases:
                 tag_str = str(v or "").strip()
                 if tag_str:
-                    t_match = await db.fetchrow("SELECT id, name, color FROM coexistence.tags WHERE LOWER(name) = LOWER($1) LIMIT 1", tag_str)
-                    if t_match:
-                        t_obj = {"id": t_match["id"], "name": t_match["name"], "color": t_match["color"]}
-                        if not any(t["id"] == t_obj["id"] for t in row_tags):
+                    parts = [p.strip().lower() for p in tag_str.split(",") if p.strip()]
+                    for part in parts:
+                        t_obj = tag_by_name.get(part)
+                        if t_obj and not any(t["id"] == t_obj["id"] for t in row_tags):
                             row_tags.append(t_obj)
             else:
                 val_str = str(v or "").strip()
@@ -480,15 +503,19 @@ async def import_contacts(
                   FROM (
                     SELECT DISTINCT ON (COALESCE(elem->>'id', elem->>'name', elem::text)) elem
                     FROM jsonb_array_elements(COALESCE(coexistence.contacts.tags, '[]'::jsonb) || $4::jsonb) AS elem
+                    ORDER BY COALESCE(elem->>'id', elem->>'name', elem::text)
                   ) s
                 )
               END,
               custom_fields = COALESCE(coexistence.contacts.custom_fields, '{}'::jsonb) || $5::jsonb,
-              assigned_user_id = CASE WHEN $7::boolean THEN $6 ELSE coexistence.contacts.assigned_user_id END,
+              assigned_user_id = CASE
+                WHEN $7::boolean THEN $6
+                ELSE COALESCE(coexistence.contacts.assigned_user_id, $6)
+              END,
               updated_at = NOW()
             RETURNING (xmax = 0) AS inserted
             """,
-            clean_wa, phone, name, json.dumps(row_tags), json.dumps(row_custom_fields), target_assigned_user, set_assign
+            clean_wa, phone, name, json.dumps(row_tags), json.dumps(row_custom_fields), target_assigned_user, admin_set_assign
         )
 
         if res and res.get("inserted"):

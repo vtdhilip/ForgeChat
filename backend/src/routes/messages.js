@@ -102,7 +102,7 @@ const sheetUpload = multer({
 // [a-z0-9] (case/punctuation-insensitive) before lookup.
 const IMPORT_NAME_ALIASES = new Set([
   'name', 'fullname', 'contactname', 'customername',
-  'firstname', 'first', 'fname', 'first_name', 'contact', 'clientname', 'leadname',
+  'firstname', 'first', 'fname', 'contact', 'clientname', 'leadname',
 ]);
 const IMPORT_PHONE_ALIASES = new Set([
   'phone', 'phonenumber', 'phoneno', 'mobile', 'mobilenumber', 'mobileno',
@@ -112,7 +112,9 @@ const IMPORT_TAG_ALIASES = new Set(['tag', 'tags', 'label', 'labels']);
 function pickImportColumn(row, aliases) {
   for (const key of Object.keys(row)) {
     const norm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (aliases.has(norm)) return row[key];
+    if (aliases.has(norm) && row[key] != null && String(row[key]).trim() !== '') {
+      return row[key];
+    }
   }
   return undefined;
 }
@@ -486,14 +488,29 @@ router.post('/contacts/import', sheetUpload.single('file'), async (req, res) => 
       if (tr[0]) selectedTag = { id: tr[0].id, name: tr[0].name, color: tr[0].color };
     }
 
-    let setAssign = false;
+    let adminSetAssign = false;
     let assignVal = null;
     if (!admin) {
-      setAssign = true;
       assignVal = req.user.id;
     } else if (req.body.assignedUserId && String(req.body.assignedUserId).trim()) {
-      setAssign = true;
-      assignVal = parseInt(req.body.assignedUserId, 10) || null;
+      const parsedUid = parseInt(req.body.assignedUserId, 10);
+      if (parsedUid) {
+        const userQuery = req.orgId
+          ? 'SELECT u.id FROM coexistence.forgecrm_users u JOIN coexistence.organization_members om ON om.user_id = u.id WHERE u.id = $1 AND om.org_id = $2::uuid AND u.is_active = TRUE'
+          : 'SELECT id FROM coexistence.forgecrm_users WHERE id = $1 AND is_active = TRUE';
+        const userParams = req.orgId ? [parsedUid, req.orgId] : [parsedUid];
+        const { rows: ur } = await pool.query(userQuery, userParams);
+        if (ur[0]) {
+          assignVal = parsedUid;
+          adminSetAssign = true;
+        }
+      }
+    }
+
+    const { rows: allTags } = await pool.query('SELECT id, name, color FROM coexistence.tags');
+    const tagByName = new Map();
+    for (const t of allTags) {
+      tagByName.set(t.name.toLowerCase().trim(), { id: t.id, name: t.name, color: t.color });
     }
 
     for (let i = 0; i < rows.length; i++) {
@@ -519,9 +536,12 @@ router.post('/contacts/import', sheetUpload.single('file'), async (req, res) => 
         if (IMPORT_TAG_ALIASES.has(normK)) {
           const tagStr = String(v || '').trim();
           if (tagStr) {
-            const { rows: tr } = await pool.query('SELECT id, name, color FROM coexistence.tags WHERE LOWER(name) = LOWER($1) LIMIT 1', [tagStr]);
-            if (tr[0] && !rowTags.some(t => t.id === tr[0].id)) {
-              rowTags.push({ id: tr[0].id, name: tr[0].name, color: tr[0].color });
+            const parts = tagStr.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+            for (const part of parts) {
+              const tObj = tagByName.get(part);
+              if (tObj && !rowTags.some(t => t.id === tObj.id)) {
+                rowTags.push(tObj);
+              }
             }
           }
         } else {
@@ -543,14 +563,18 @@ router.post('/contacts/import', sheetUpload.single('file'), async (req, res) => 
               FROM (
                 SELECT DISTINCT ON (COALESCE(elem->>'id', elem->>'name', elem::text)) elem
                 FROM jsonb_array_elements(COALESCE(coexistence.contacts.tags, '[]'::jsonb) || $4::jsonb) AS elem
+                ORDER BY COALESCE(elem->>'id', elem->>'name', elem::text)
               ) s
             )
           END,
           custom_fields = COALESCE(coexistence.contacts.custom_fields, '{}'::jsonb) || $5::jsonb,
-          assigned_user_id = CASE WHEN $7::boolean THEN $6 ELSE coexistence.contacts.assigned_user_id END,
+          assigned_user_id = CASE
+            WHEN $7::boolean THEN $6
+            ELSE COALESCE(coexistence.contacts.assigned_user_id, $6)
+          END,
           updated_at = NOW()
         RETURNING (xmax = 0) AS inserted
-      `, [waNumber, phone, name, JSON.stringify(rowTags), JSON.stringify(rowCustomFields), assignVal, setAssign]);
+      `, [waNumber, phone, name, JSON.stringify(rowTags), JSON.stringify(rowCustomFields), assignVal, adminSetAssign]);
       if (result.rows[0]?.inserted) imported++; else updated++;
     }
 
