@@ -86,6 +86,8 @@ litellm_config.yaml.save
 *.dump
 *.sql.gz
 *.backup
+*.csv
+scripts/generate_import_csv.py
 
 # Internal ops doc — not for the public repo
 ForgeMind_CICD_Setup_Guide.pdf
