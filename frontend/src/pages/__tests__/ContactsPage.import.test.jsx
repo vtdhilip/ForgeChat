@@ -96,4 +96,33 @@ describe('ContactsPage — Import contacts', () => {
     // list refreshed after import (mount call + post-import call)
     expect(api.savedContacts.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('passes selected tag and assigned user options to api.importContacts', async () => {
+    api.tags.list.mockResolvedValue([{ id: 'tag-outreach', name: 'Sparrow Outreach', color: '#10b981' }]);
+    api.users.list.mockResolvedValue([{ id: 42, name: 'Vijay', email: 'vijay@example.com' }]);
+
+    const user = userEvent.setup();
+    const { container } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Import' }));
+
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(['Name,Phone\nLora,14047841705'], 'contacts.csv', { type: 'text/csv' });
+    await user.upload(input, file);
+
+    const tagSelect = await screen.findByLabelText(/Apply Tag \/ Label/);
+    await user.selectOptions(tagSelect, 'tag-outreach');
+
+    const userSelect = await screen.findByLabelText(/Assign to team member/);
+    await user.selectOptions(userSelect, '42');
+
+    await user.click(screen.getByRole('button', { name: /Import contacts/ }));
+
+    await waitFor(() => expect(api.importContacts).toHaveBeenCalledTimes(1));
+    expect(api.importContacts.mock.calls[0][0]).toBe(WA);
+    expect(api.importContacts.mock.calls[0][1]).toBe(file);
+    expect(api.importContacts.mock.calls[0][2]).toEqual({
+      tagId: 'tag-outreach',
+      assignedUserId: '42',
+    });
+  });
 });
