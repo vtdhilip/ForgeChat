@@ -436,7 +436,8 @@ async def import_contacts(
         except (ValueError, TypeError):
             pass
 
-    name_aliases = {"name", "fullname", "contactname", "customername", "firstname", "first", "fname", "contact", "clientname", "leadname"}
+    full_name_aliases = {"name", "fullname", "contactname", "customername", "contact", "clientname", "leadname"}
+    first_name_aliases = {"firstname", "first", "fname"}
     phone_aliases = {"phone", "phonenumber", "phoneno", "mobile", "mobilenumber", "mobileno", "whatsapp", "whatsappnumber", "contactnumber", "number", "msisdn"}
     tag_aliases = {"tag", "tags", "label", "labels"}
 
@@ -446,6 +447,7 @@ async def import_contacts(
     for idx, r in enumerate(rows):
         row_num = idx + 2
         name = ""
+        has_full_name = False
         phone = ""
         row_tags = [dict(selected_tag)] if selected_tag else []
         row_custom_fields = {}
@@ -454,10 +456,17 @@ async def import_contacts(
             if not k:
                 continue
             norm_k = re.sub(r"[^a-z0-9]", "", str(k).lower())
-            if norm_k in name_aliases:
+            if norm_k in full_name_aliases:
                 val = str(v or "").strip()
                 if val:
                     name = val
+                    has_full_name = True
+            elif norm_k in first_name_aliases:
+                val = str(v or "").strip()
+                if val:
+                    if not has_full_name:
+                        name = val
+                    row_custom_fields[str(k).strip()] = val
             elif norm_k in phone_aliases:
                 val = normalize_phone(v)
                 if val:

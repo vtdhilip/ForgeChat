@@ -87,6 +87,7 @@ litellm_config.yaml.save
 *.sql.gz
 *.backup
 *.csv
+*.xlsx
 scripts/generate_import_csv.py
 
 # Internal ops doc — not for the public repo
