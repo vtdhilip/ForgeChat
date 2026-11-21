@@ -481,7 +481,7 @@ async def execute_action_node(conn, execution_id: int, node: Dict[str, Any], con
                         """,
                         wa_number,
                         contact_number,
-                        json.dumps(existing),
+                        existing,
                     )
                 results.append({**base, "status": "applied", "tag": tag_obj})
 
@@ -503,7 +503,7 @@ async def execute_action_node(conn, execution_id: int, node: Dict[str, Any], con
                     "UPDATE coexistence.contacts SET tags = $3::jsonb, updated_at = NOW() WHERE wa_number = $1 AND contact_number = $2",
                     wa_number,
                     contact_number,
-                    json.dumps(new_tags),
+                    new_tags,
                 )
                 results.append({**base, "status": "applied", "removed": tag_name})
 
@@ -545,7 +545,7 @@ async def execute_action_node(conn, execution_id: int, node: Dict[str, Any], con
                     """,
                     wa_number,
                     contact_number,
-                    json.dumps(cf),
+                    cf,
                 )
                 results.append({**base, "status": "applied", "field": f_name, "value": resolved_v})
             else:

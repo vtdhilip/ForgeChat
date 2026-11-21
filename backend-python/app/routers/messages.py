@@ -70,7 +70,7 @@ class ContactSaveRequest(BaseModel):
     waNumber: str
     contactNumber: str
     name: Optional[str] = None
-    tags: Optional[List[str]] = None
+    tags: Optional[List[Union[Dict[str, Any], str]]] = None
     customFields: Optional[Dict[str, Any]] = None
     assignedUserId: Optional[Any] = None
 
@@ -303,8 +303,8 @@ async def save_contact(payload: ContactSaveRequest, tenant_ctx: dict = Depends(g
         await assert_contact_access(user, wa_number, contact_number, tenant_ctx)
 
     clean_name = payload.name.strip() if payload.name and payload.name.strip() else None
-    tags_json = json.dumps(payload.tags or [])
-    cf_json = json.dumps(payload.customFields) if payload.customFields is not None else None
+    tags_val = payload.tags if payload.tags is not None else None
+    cf_val = payload.customFields if payload.customFields is not None else None
 
     set_assign = False
     assign_val = None
@@ -319,16 +319,16 @@ async def save_contact(payload: ContactSaveRequest, tenant_ctx: dict = Depends(g
         """
         INSERT INTO coexistence.contacts
           (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, updated_at)
-        VALUES ($1, $2, $3, $4, COALESCE($5::jsonb, '{}'::jsonb), $6, NOW())
+        VALUES ($1, $2, $3, COALESCE($4::jsonb, '[]'::jsonb), COALESCE($5::jsonb, '{}'::jsonb), $6, NOW())
         ON CONFLICT (wa_number, contact_number)
         DO UPDATE SET
           name = COALESCE(EXCLUDED.name, coexistence.contacts.name),
-          tags = EXCLUDED.tags,
+          tags = COALESCE($4::jsonb, coexistence.contacts.tags),
           custom_fields = COALESCE($5::jsonb, coexistence.contacts.custom_fields),
           assigned_user_id = CASE WHEN $7::boolean THEN $6 ELSE coexistence.contacts.assigned_user_id END,
           updated_at = NOW()
         """,
-        wa_number, contact_number, clean_name, tags_json, cf_json, assign_val, set_assign
+        wa_number, contact_number, clean_name, tags_val, cf_val, assign_val, set_assign
     )
     return {"ok": True}
 
@@ -515,7 +515,7 @@ async def import_contacts(
               updated_at = NOW()
             RETURNING (xmax = 0) AS inserted
             """,
-            clean_wa, phone, name, json.dumps(row_tags), json.dumps(row_custom_fields), target_assigned_user, admin_set_assign
+            clean_wa, phone, name, row_tags, row_custom_fields, target_assigned_user, admin_set_assign
         )
 
         if res and res.get("inserted"):
