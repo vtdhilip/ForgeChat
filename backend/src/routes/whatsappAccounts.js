@@ -307,6 +307,8 @@ function rowToCreds(r) {
     wabaId: r.waba_id,
     accessToken: decrypt(r.access_token_encrypted),
     isActive: r.is_active,
+    org_id: r.org_id,
+    orgId: r.org_id,
   };
 }
 

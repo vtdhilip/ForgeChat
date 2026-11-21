@@ -455,10 +455,20 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
   const [deleteModal, setDeleteModal] = useState({ open: false, template: null });
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [accountFilter, setAccountFilter] = useState('all');
 
-  // Apply text/status filters first
+  const matchesAccount = (t, filter) => {
+    if (filter === 'all') return true;
+    if (filter === 'unassigned') return !t.whatsapp_account_id && !t.whatsappAccountId;
+    return String(t.whatsapp_account_id ?? t.whatsappAccountId ?? '') === String(filter);
+  };
+
+  // Apply text/status/account filters first
   const filteredFlat = useMemo(() => {
     let list = templates;
+    if (accountFilter !== 'all') {
+      list = list.filter(t => matchesAccount(t, accountFilter));
+    }
     if (statusFilter !== 'all') list = list.filter(t => t.status === statusFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -470,7 +480,7 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
       );
     }
     return list;
-  }, [templates, search, statusFilter]);
+  }, [templates, search, statusFilter, accountFilter]);
 
   // Group by template_group_key when toggle is on. Each "row" in the displayed
   // list is either a single template (no siblings) or a group representative
@@ -494,10 +504,15 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
 
   // Count each status for the filter chips
   const counts = useMemo(() => {
-    const c = { all: templates.length, DRAFT: 0, SUBMITTED: 0, APPROVED: 0, REJECTED: 0, PAUSED: 0, DISABLED: 0 };
-    templates.forEach(t => { if (c[t.status] != null) c[t.status]++; });
+    const c = { all: 0, DRAFT: 0, SUBMITTED: 0, APPROVED: 0, REJECTED: 0, PAUSED: 0, DISABLED: 0 };
+    let list = templates;
+    if (accountFilter !== 'all') {
+      list = list.filter(t => matchesAccount(t, accountFilter));
+    }
+    c.all = list.length;
+    list.forEach(t => { if (c[t.status] != null) c[t.status]++; });
     return c;
-  }, [templates]);
+  }, [templates, accountFilter]);
 
   const selectedDrafts = useMemo(
     () => filtered.filter(t => sel.isSelected(t.id) && (t.status === 'DRAFT' || t.status === 'REJECTED')),
@@ -556,7 +571,7 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 1 360px', minWidth: 220 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 1 320px', minWidth: 200 }}>
           <Search size={16} color={B.t6} />
           <input
             style={{ flex: 1, border: '1.5px solid #D5D5D0', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontFamily: FONT, background: 'var(--c-cardBg)', color: 'var(--c-text)', outline: 'none' }}
@@ -565,6 +580,25 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+        {accounts && accounts.length > 0 && (
+          <div style={{ width: 230, minWidth: 180 }}>
+            <SearchableSelect
+              value={accountFilter}
+              onChange={setAccountFilter}
+              options={[
+                { value: 'all', label: 'All Accounts' },
+                ...accounts.map(a => ({
+                  value: String(a.id),
+                  label: `${a.displayName || 'Account'} (${maskPhone(a.displayPhoneNumber)})`
+                })),
+                { value: 'unassigned', label: '— Unassigned —' }
+              ]}
+              placeholder="All Accounts"
+              searchPlaceholder="Search accounts…"
+              triggerStyle={{ border: '1.5px solid #D5D5D0', borderRadius: 8, padding: '7px 12px', fontSize: 13, fontFamily: FONT }}
+            />
+          </div>
+        )}
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: B.t4, fontFamily: FONT, cursor: 'pointer' }}>
           <input type="checkbox" checked={groupByTranslation} onChange={e => onToggleGroup(e.target.checked)} />
           Group translations

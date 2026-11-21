@@ -33,7 +33,8 @@ def row_to_creds(r: Optional[dict]) -> Optional[Dict[str, Any]]:
         "wabaId": r.get("waba_id"),
         "accessToken": decrypt(r.get("access_token_encrypted")),
         "isActive": r.get("is_active"),
-        "orgId": r.get("org_id")
+        "orgId": r.get("org_id"),
+        "org_id": r.get("org_id")
     }
 
 async def get_account_with_token(account_id: int) -> Optional[Dict[str, Any]]:

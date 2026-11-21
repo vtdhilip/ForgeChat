@@ -124,6 +124,12 @@ router.get('/templates', async (req, res) => {
     const { accountId, status, q } = req.query;
     const where = [];
     const params = [];
+
+    if (req.orgId) {
+      params.push(req.orgId);
+      where.push(`(t.org_id = $${params.length}::uuid OR wa.org_id = $${params.length}::uuid)`);
+    }
+
     if (accountId === 'unassigned') {
       where.push('t.whatsapp_account_id IS NULL');
     } else if (accountId) {
@@ -170,6 +176,12 @@ router.get('/templates', async (req, res) => {
 // GET /templates/:id — single template
 router.get('/templates/:id', async (req, res) => {
   try {
+    const params = [req.params.id];
+    let whereOrg = '';
+    if (req.orgId) {
+      params.push(req.orgId);
+      whereOrg = `AND (t.org_id = $${params.length}::uuid OR wa.org_id = $${params.length}::uuid)`;
+    }
     const { rows } = await pool.query(
       `SELECT t.id, t.name, t.category, t.language, t.header_type, t.header_text, t.media_handle,
               t.header_media_library_id, t.body, t.footer,
@@ -187,8 +199,8 @@ router.get('/templates/:id', async (req, res) => {
                WHERE b.template_id = t.id AND bl.action = 'BROADCAST')::int AS "sendCount"
        FROM coexistence.message_templates t
        LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
-       WHERE t.id = $1`,
-      [req.params.id]
+       WHERE t.id = $1 ${whereOrg}`,
+      params
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Template not found' });
     res.json(rows[0]);
@@ -209,6 +221,15 @@ router.post('/templates', requirePermission('template-builder'), async (req, res
   // Meta requires unique (name, language) per WABA. Pre-check locally to
   // give a friendly error before submission fails downstream.
   if (data.whatsappAccountId) {
+    if (req.orgId) {
+      const { rows: waCheck } = await pool.query(
+        'SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid',
+        [data.whatsappAccountId, req.orgId]
+      );
+      if (waCheck.length === 0) {
+        return res.status(403).json({ error: 'WhatsApp account does not belong to your organization' });
+      }
+    }
     const { rows: dup } = await pool.query(
       `SELECT id FROM coexistence.message_templates
         WHERE whatsapp_account_id = $1
@@ -229,8 +250,8 @@ router.post('/templates', requirePermission('template-builder'), async (req, res
     `INSERT INTO coexistence.message_templates
      (name, category, language, header_type, header_text, media_handle, body, footer,
       buttons, samples, security_recommendation, code_expiry_minutes, allow_category_change, status,
-      whatsapp_account_id, template_group_key, header_media_library_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      whatsapp_account_id, template_group_key, header_media_library_id, org_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       data.name, data.category, data.language, data.header_type || 'NONE',
@@ -241,6 +262,7 @@ router.post('/templates', requirePermission('template-builder'), async (req, res
       data.whatsappAccountId || null,
       String(data.name || '').toLowerCase(),
       data.header_media_library_id || null,
+      req.orgId || null,
     ]
   );
   res.status(201).json(rows[0]);
@@ -254,9 +276,15 @@ router.post('/templates', requirePermission('template-builder'), async (req, res
 router.put('/templates/:id', requirePermission('template-builder'), async (req, res) => {
   const client = await pool.connect();
   try {
-    const { rows: existing } = await client.query(
-      'SELECT * FROM coexistence.message_templates WHERE id = $1', [req.params.id]
-    );
+    let checkQuery = `SELECT t.* FROM coexistence.message_templates t
+                      LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+                      WHERE t.id = $1`;
+    const checkParams = [req.params.id];
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      checkQuery += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+    }
+    const { rows: existing } = await client.query(checkQuery, checkParams);
     if (existing.length === 0) return res.status(404).json({ error: 'Template not found' });
     const tpl = existing[0];
 
@@ -288,6 +316,18 @@ router.put('/templates/:id', requirePermission('template-builder'), async (req, 
 
     let newStatus = 'DRAFT';
     let metaResponse = null;
+
+    const waId = data.whatsappAccountId || tpl.whatsapp_account_id;
+    if (waId && req.orgId) {
+      const { rows: waCheck } = await client.query(
+        'SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid',
+        [waId, req.orgId]
+      );
+      if (waCheck.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'WhatsApp account does not belong to your organization' });
+      }
+    }
 
     if (isApprovedEdit) {
       // Real Meta edit — needs the linked WhatsApp Account
@@ -367,9 +407,15 @@ router.put('/templates/:id', requirePermission('template-builder'), async (req, 
 // DELETE /templates/:id — removes from local DB AND from Meta if it was submitted
 router.delete('/templates/:id', requirePermission('template-builder'), async (req, res) => {
   try {
-    const { rows: tplRows } = await pool.query(
-      'SELECT * FROM coexistence.message_templates WHERE id = $1', [req.params.id]
-    );
+    let checkQuery = `SELECT t.* FROM coexistence.message_templates t
+                      LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+                      WHERE t.id = $1`;
+    const checkParams = [req.params.id];
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      checkQuery += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+    }
+    const { rows: tplRows } = await pool.query(checkQuery, checkParams);
     if (tplRows.length === 0) return res.status(404).json({ error: 'Template not found' });
     const tpl = tplRows[0];
 
@@ -410,10 +456,15 @@ const { markAccountHealth } = require('../services/accountHealth');
 
 router.post('/templates/:id/submit', requirePermission('template-builder'), async (req, res) => {
   try {
-    const { rows: tplRows } = await pool.query(
-      'SELECT * FROM coexistence.message_templates WHERE id = $1',
-      [req.params.id]
-    );
+    let checkQuery = `SELECT t.* FROM coexistence.message_templates t
+                      LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+                      WHERE t.id = $1`;
+    const checkParams = [req.params.id];
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      checkQuery += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+    }
+    const { rows: tplRows } = await pool.query(checkQuery, checkParams);
     if (tplRows.length === 0) return res.status(404).json({ error: 'Template not found' });
     const tpl = tplRows[0];
     if (!tpl.whatsapp_account_id) {
@@ -568,8 +619,8 @@ async function syncAccountTemplates(account) {
            (name, category, language, header_type, header_text, body, footer, buttons, samples,
             security_recommendation, code_expiry_minutes, status, meta_template_id,
             whatsapp_account_id, template_group_key, quality_score, previous_category,
-            last_synced_at, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW(),NOW())`,
+            org_id, last_synced_at, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),NOW(),NOW())`,
         [
           r.name,
           r.category ? String(r.category).toUpperCase() : 'UTILITY',
@@ -588,6 +639,7 @@ async function syncAccountTemplates(account) {
           String(r.name || '').toLowerCase(),
           qs || null,
           r.previous_category || null,
+          account.org_id || null,
         ]
       );
       imported++;
@@ -603,9 +655,15 @@ async function syncAccountTemplates(account) {
  */
 router.post('/templates/:id/sync', requirePermission('template-builder'), async (req, res) => {
   try {
-    const { rows: tplRows } = await pool.query(
-      'SELECT * FROM coexistence.message_templates WHERE id = $1', [req.params.id]
-    );
+    let checkQuery = `SELECT t.* FROM coexistence.message_templates t
+                      LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+                      WHERE t.id = $1`;
+    const checkParams = [req.params.id];
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      checkQuery += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+    }
+    const { rows: tplRows } = await pool.query(checkQuery, checkParams);
     if (tplRows.length === 0) return res.status(404).json({ error: 'Template not found' });
     const tpl = tplRows[0];
     if (!tpl.whatsapp_account_id) return res.status(400).json({ error: 'Template has no WhatsApp Account assigned' });
@@ -635,10 +693,14 @@ router.post('/templates/:id/sync', requirePermission('template-builder'), async 
  * "Refresh All" button (POST /templates/sync-all) and the periodic auto-sync
  * cron in index.js (Meta does not push us approval status — we must poll).
  */
-async function syncAllAccountTemplates() {
-  const { rows: accs } = await pool.query(
-    `SELECT * FROM coexistence.whatsapp_accounts WHERE is_active = TRUE`
-  );
+async function syncAllAccountTemplates(orgId = null) {
+  let query = `SELECT * FROM coexistence.whatsapp_accounts WHERE is_active = TRUE`;
+  const params = [];
+  if (orgId) {
+    params.push(orgId);
+    query += ` AND org_id = $1::uuid`;
+  }
+  const { rows: accs } = await pool.query(query, params);
   let totalUpdated = 0, totalImported = 0, totalRemote = 0;
   for (const r of accs) {
     const account = await getAccountWithToken(r.id);
@@ -663,7 +725,7 @@ async function syncAllAccountTemplates() {
  */
 router.post('/templates/sync-all', requirePermission('template-builder'), async (req, res) => {
   try {
-    const result = await syncAllAccountTemplates();
+    const result = await syncAllAccountTemplates(req.orgId);
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('[templates] sync-all error:', err.message);
@@ -676,18 +738,29 @@ router.post('/templates/sync-all', requirePermission('template-builder'), async 
  */
 router.post('/templates/:id/duplicate', requirePermission('template-builder'), async (req, res) => {
   try {
+    let checkQuery = `SELECT t.* FROM coexistence.message_templates t
+                      LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+                      WHERE t.id = $1`;
+    const checkParams = [req.params.id];
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      checkQuery += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+    }
+    const { rows: tplRows } = await pool.query(checkQuery, checkParams);
+    if (tplRows.length === 0) return res.status(404).json({ error: 'Template not found' });
+
     const { rows } = await pool.query(
       `INSERT INTO coexistence.message_templates
         (name, category, language, header_type, header_text, media_handle, body, footer,
          buttons, samples, security_recommendation, code_expiry_minutes, allow_category_change,
-         status, whatsapp_account_id, template_group_key)
+         status, whatsapp_account_id, template_group_key, org_id)
        SELECT name || '_copy_' || EXTRACT(EPOCH FROM NOW())::int,
               category, language, header_type, header_text, media_handle, body, footer,
               buttons, samples, security_recommendation, code_expiry_minutes, allow_category_change,
-              'DRAFT', whatsapp_account_id, NULL
+              'DRAFT', whatsapp_account_id, NULL, COALESCE($2::uuid, org_id)
          FROM coexistence.message_templates WHERE id = $1
        RETURNING *`,
-      [req.params.id]
+      [req.params.id, req.orgId || null]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Template not found' });
     res.status(201).json(rows[0]);
@@ -711,7 +784,7 @@ router.post('/templates/bulk-submit', requirePermission('template-builder'), asy
       try {
         // Re-invoke the existing /:id/submit handler logic inline by calling it
         await new Promise((resolve) => {
-          submitOneInline(id).then(out => {
+          submitOneInline(id, req.orgId).then(out => {
             results.push({ id, ...out });
             resolve();
           }).catch(err => {
@@ -731,8 +804,16 @@ router.post('/templates/bulk-submit', requirePermission('template-builder'), asy
 });
 
 // Internal: shared submit-one logic used by /submit and /bulk-submit
-async function submitOneInline(id) {
-  const { rows: tplRows } = await pool.query('SELECT * FROM coexistence.message_templates WHERE id = $1', [id]);
+async function submitOneInline(id, orgId = null) {
+  let query = `SELECT t.* FROM coexistence.message_templates t
+               LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+               WHERE t.id = $1`;
+  const params = [id];
+  if (orgId) {
+    params.push(orgId);
+    query += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+  }
+  const { rows: tplRows } = await pool.query(query, params);
   if (tplRows.length === 0) return { ok: false, error: 'Template not found' };
   const tpl = tplRows[0];
   if (!tpl.whatsapp_account_id) return { ok: false, error: 'No WhatsApp Account assigned' };
@@ -765,12 +846,17 @@ async function submitOneInline(id) {
 // GET /templates/:id/payload — get Meta API payload
 router.get('/templates/:id/payload', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT name, category, language, header_type, header_text, media_handle, body, footer,
-              buttons, samples, security_recommendation, code_expiry_minutes, allow_category_change
-       FROM coexistence.message_templates WHERE id = $1`,
-      [req.params.id]
-    );
+    let checkQuery = `SELECT t.name, t.category, t.language, t.header_type, t.header_text, t.media_handle, t.body, t.footer,
+                             t.buttons, t.samples, t.security_recommendation, t.code_expiry_minutes, t.allow_category_change
+                      FROM coexistence.message_templates t
+                      LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+                      WHERE t.id = $1`;
+    const checkParams = [req.params.id];
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      checkQuery += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+    }
+    const { rows } = await pool.query(checkQuery, checkParams);
     if (rows.length === 0) return res.status(404).json({ error: 'Template not found' });
     const payload = buildPayload(rows[0]);
     res.json(payload);
@@ -794,12 +880,17 @@ router.post('/templates/:id/test-send', requirePermission('template-builder'), a
     const { to, sampleValues = {} } = req.body || {};
     if (!to) return res.status(400).json({ error: 'to (recipient phone) required' });
 
-    const { rows } = await pool.query(
-      `SELECT id, name, language, header_type, header_text, body, buttons, samples,
-              media_handle, header_media_library_id, whatsapp_account_id
-         FROM coexistence.message_templates WHERE id = $1`,
-      [req.params.id]
-    );
+    let checkQuery = `SELECT t.id, t.name, t.language, t.header_type, t.header_text, t.body, t.buttons, t.samples,
+                             t.media_handle, t.header_media_library_id, t.whatsapp_account_id
+                      FROM coexistence.message_templates t
+                      LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+                      WHERE t.id = $1`;
+    const checkParams = [req.params.id];
+    if (req.orgId) {
+      checkParams.push(req.orgId);
+      checkQuery += ` AND (t.org_id = $2::uuid OR wa.org_id = $2::uuid)`;
+    }
+    const { rows } = await pool.query(checkQuery, checkParams);
     if (rows.length === 0) return res.status(404).json({ error: 'Template not found' });
     const tpl = rows[0];
     if (!tpl.whatsapp_account_id) return res.status(400).json({ error: 'Template has no WhatsApp account assigned' });

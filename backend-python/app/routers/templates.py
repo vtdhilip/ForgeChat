@@ -1,6 +1,7 @@
 import re
 import json
 import httpx
+import time
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form, Request
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 
 from app.core.database import db
 from app.middleware.auth import get_current_user, require_permission
+from app.middleware.tenant import get_tenant_context
 from app.services.whatsapp_service import get_account_with_token
 from app.services.account_health import mark_account_health
 from app.integrations import meta_client
@@ -195,10 +197,16 @@ async def list_templates(
     accountId: Optional[str] = None,
     status: Optional[str] = None,
     q: Optional[str] = None,
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context)
 ):
+    org_id = tenant_ctx.get("org_id")
     where = []
     params = []
+
+    if org_id:
+        params.append(org_id)
+        where.append(f"(t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)")
+
     if accountId == "unassigned":
         where.append("t.whatsapp_account_id IS NULL")
     elif accountId:
@@ -238,8 +246,15 @@ async def list_templates(
     return [shape_template(dict(r)) for r in rows]
 
 @router.get("/{template_id}")
-async def get_template(template_id: int, user: dict = Depends(get_current_user)):
-    query = """
+async def get_template(template_id: int, tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx.get("org_id")
+    where_org = ""
+    params = [template_id]
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND (t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)"
+
+    query = f"""
       SELECT t.id, t.name, t.category, t.language, t.header_type, t.header_text, t.media_handle,
              t.header_media_library_id, t.body, t.footer,
              t.buttons, t.samples, t.security_recommendation, t.code_expiry_minutes,
@@ -256,15 +271,20 @@ async def get_template(template_id: int, user: dict = Depends(get_current_user))
               WHERE b.template_id = t.id AND bl.action = 'BROADCAST')::int AS "sendCount"
       FROM coexistence.message_templates t
       LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
-      WHERE t.id = $1
+      WHERE t.id = $1 {where_org}
     """
-    row = await db.fetchrow(query, template_id)
+    row = await db.fetchrow(query, *params)
     if not row:
         raise HTTPException(status_code=404, detail="Template not found")
     return shape_template(dict(row))
 
 @router.post("", status_code=201)
-async def create_template(request: Request, user: dict = Depends(require_permission("template-builder"))):
+async def create_template(
+    request: Request,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("template-builder"))
+):
+    org_id = tenant_ctx.get("org_id")
     data = await request.json()
     errors = run_validation(data)
     if errors:
@@ -272,6 +292,13 @@ async def create_template(request: Request, user: dict = Depends(require_permiss
 
     wa_id = data.get("whatsappAccountId")
     if wa_id:
+        if org_id:
+            wa_acc = await db.fetchrow(
+                "SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid",
+                wa_id, org_id
+            )
+            if not wa_acc:
+                raise HTTPException(status_code=403, detail="WhatsApp account does not belong to your organization")
         dup = await db.fetchval(
             """
             SELECT id FROM coexistence.message_templates
@@ -291,23 +318,172 @@ async def create_template(request: Request, user: dict = Depends(require_permiss
         INSERT INTO coexistence.message_templates
          (name, category, language, header_type, header_text, media_handle, body, footer,
           buttons, samples, security_recommendation, code_expiry_minutes, allow_category_change, status,
-          whatsapp_account_id, template_group_key, header_media_library_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          whatsapp_account_id, template_group_key, header_media_library_id, org_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::uuid)
         RETURNING *
         """,
         data["name"], data["category"], data["language"], data.get("header_type") or "NONE",
         data.get("header_text"), data.get("media_handle"), data["body"],
-        data.get("footer"), json.dumps(data.get("buttons") or []), json.dumps(data.get("samples") or {}),
+        data.get("footer"), data.get("buttons") or [], data.get("samples") or {},
         bool(data.get("security_recommendation")), data.get("code_expiry_minutes"),
         data.get("allow_category_change") is not False, "DRAFT",
         wa_id, str(data["name"]).lower(),
-        data.get("header_media_library_id")
+        data.get("header_media_library_id"),
+        org_id
+    )
+    return shape_template(dict(row))
+
+@router.put("/{template_id}")
+async def update_template(
+    template_id: int,
+    request: Request,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("template-builder"))
+):
+    org_id = tenant_ctx.get("org_id")
+    params = [template_id]
+    where_org = ""
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND (t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)"
+
+    tpl = await db.fetchrow(
+        f"""
+        SELECT t.* FROM coexistence.message_templates t
+        LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+        WHERE t.id = $1 {where_org}
+        """,
+        *params
+    )
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if tpl["status"] == "SUBMITTED":
+        raise HTTPException(status_code=409, detail="Template is under Meta review — wait for approval/rejection before editing")
+    if tpl["status"] == "DISABLED":
+        raise HTTPException(status_code=409, detail="DISABLED templates cannot be edited — duplicate and resubmit instead")
+
+    data = await request.json()
+    errors = run_validation(data)
+    if errors:
+        raise HTTPException(status_code=400, detail={"error": "Validation failed", "errors": errors})
+
+    is_approved_edit = tpl["status"] in ("APPROVED", "PAUSED")
+    if is_approved_edit:
+        if data.get("name") and data["name"] != tpl["name"]:
+            raise HTTPException(status_code=400, detail="Cannot rename an APPROVED template — duplicate it instead")
+        if data.get("language") and data["language"] != tpl["language"]:
+            raise HTTPException(status_code=400, detail="Cannot change language on an APPROVED template — add a translation instead")
+
+    new_status = "DRAFT"
+    wa_id = data.get("whatsappAccountId", tpl["whatsapp_account_id"])
+    if wa_id and org_id:
+        wa_acc = await db.fetchrow("SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid", wa_id, org_id)
+        if not wa_acc:
+            raise HTTPException(status_code=403, detail="WhatsApp account does not belong to your organization")
+
+    if is_approved_edit:
+        if not wa_id or not tpl.get("meta_template_id"):
+            raise HTTPException(status_code=400, detail="Template missing account link or Meta ID — cannot edit at Meta")
+        account = await get_account_with_token(wa_id)
+        if not account or not account.get("accessToken"):
+            raise HTTPException(status_code=400, detail="WhatsApp account credentials missing")
+        payload = build_payload(data)
+        try:
+            await meta_client.edit_template(account["wabaId"], account["accessToken"], tpl["meta_template_id"], payload)
+            new_status = "SUBMITTED"
+            await mark_account_health(account["id"], "healthy")
+        except Exception as err:
+            await mark_account_health(account["id"], "unknown_error", str(err))
+            raise HTTPException(status_code=400, detail=f"Meta edit failed: {err}")
+
+    row = await db.fetchrow(
+        """
+        UPDATE coexistence.message_templates
+        SET name = $1, category = $2, language = $3, header_type = $4, header_text = $5,
+            media_handle = $6, body = $7, footer = $8, buttons = $9, samples = $10,
+            security_recommendation = $11, code_expiry_minutes = $12,
+            allow_category_change = $13, status = $14, whatsapp_account_id = $15,
+            template_group_key = $16, header_media_library_id = $17, updated_at = NOW()
+        WHERE id = $18
+        RETURNING *
+        """,
+        data.get("name", tpl["name"]), data.get("category", tpl["category"]),
+        data.get("language", tpl["language"]), data.get("header_type") or "NONE",
+        data.get("header_text"), data.get("media_handle"), data["body"],
+        data.get("footer"), data.get("buttons") or [], data.get("samples") or {},
+        bool(data.get("security_recommendation")), data.get("code_expiry_minutes"),
+        data.get("allow_category_change") is not False, new_status,
+        wa_id, str(data.get("name", tpl["name"])).lower(),
+        data.get("header_media_library_id"),
+        template_id
+    )
+    return shape_template(dict(row))
+
+@router.post("/{template_id}/duplicate")
+async def duplicate_template(
+    template_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("template-builder"))
+):
+    org_id = tenant_ctx.get("org_id")
+    where_org = ""
+    params = [template_id]
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND (t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)"
+
+    tpl = await db.fetchrow(
+        f"""
+        SELECT t.* FROM coexistence.message_templates t
+        LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+        WHERE t.id = $1 {where_org}
+        """,
+        *params
+    )
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    new_name = f"{tpl['name']}_copy_{int(time.time())}"[:512]
+    row = await db.fetchrow(
+        """
+        INSERT INTO coexistence.message_templates
+         (name, category, language, header_type, header_text, media_handle, body, footer,
+          buttons, samples, security_recommendation, code_expiry_minutes, allow_category_change, status,
+          whatsapp_account_id, template_group_key, header_media_library_id, org_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'DRAFT',$14,$15,$16,$17::uuid)
+        RETURNING *
+        """,
+        new_name, tpl["category"], tpl["language"], tpl["header_type"],
+        tpl["header_text"], tpl["media_handle"], tpl["body"],
+        tpl["footer"], tpl["buttons"] or [], tpl["samples"] or {},
+        tpl["security_recommendation"], tpl["code_expiry_minutes"],
+        tpl["allow_category_change"], tpl["whatsapp_account_id"],
+        new_name.lower(), tpl["header_media_library_id"], org_id or tpl.get("org_id")
     )
     return shape_template(dict(row))
 
 @router.delete("/{template_id}")
-async def delete_template(template_id: int, user: dict = Depends(require_permission("template-builder"))):
-    row = await db.fetchrow("SELECT * FROM coexistence.message_templates WHERE id = $1", template_id)
+async def delete_template(
+    template_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("template-builder"))
+):
+    org_id = tenant_ctx.get("org_id")
+    where_org = ""
+    params = [template_id]
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND (t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)"
+
+    row = await db.fetchrow(
+        f"""
+        SELECT t.* FROM coexistence.message_templates t
+        LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+        WHERE t.id = $1 {where_org}
+        """,
+        *params
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Template not found")
 
@@ -323,8 +499,26 @@ async def delete_template(template_id: int, user: dict = Depends(require_permiss
     return {"ok": True}
 
 @router.post("/{template_id}/submit")
-async def submit_template_endpoint(template_id: int, user: dict = Depends(require_permission("template-builder"))):
-    tpl = await db.fetchrow("SELECT * FROM coexistence.message_templates WHERE id = $1", template_id)
+async def submit_template_endpoint(
+    template_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("template-builder"))
+):
+    org_id = tenant_ctx.get("org_id")
+    where_org = ""
+    params = [template_id]
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND (t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)"
+
+    tpl = await db.fetchrow(
+        f"""
+        SELECT t.* FROM coexistence.message_templates t
+        LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+        WHERE t.id = $1 {where_org}
+        """,
+        *params
+    )
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
@@ -358,8 +552,26 @@ async def submit_template_endpoint(template_id: int, user: dict = Depends(requir
         raise HTTPException(status_code=400, detail=str(err))
 
 @router.post("/{template_id}/sync")
-async def sync_template_endpoint(template_id: int, user: dict = Depends(require_permission("template-builder"))):
-    tpl = await db.fetchrow("SELECT * FROM coexistence.message_templates WHERE id = $1", template_id)
+async def sync_template_endpoint(
+    template_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("template-builder"))
+):
+    org_id = tenant_ctx.get("org_id")
+    where_org = ""
+    params = [template_id]
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND (t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)"
+
+    tpl = await db.fetchrow(
+        f"""
+        SELECT t.* FROM coexistence.message_templates t
+        LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+        WHERE t.id = $1 {where_org}
+        """,
+        *params
+    )
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
@@ -396,8 +608,16 @@ async def sync_template_endpoint(template_id: int, user: dict = Depends(require_
     return shape_template(dict(tpl))
 
 @router.post("/sync-all")
-async def sync_all_templates_endpoint(user: dict = Depends(require_permission("template-builder"))):
-    accounts = await db.fetch("SELECT id FROM coexistence.whatsapp_accounts WHERE is_active = true")
+async def sync_all_templates_endpoint(
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("template-builder"))
+):
+    org_id = tenant_ctx.get("org_id")
+    if org_id:
+        accounts = await db.fetch("SELECT id FROM coexistence.whatsapp_accounts WHERE is_active = true AND org_id = $1::uuid", org_id)
+    else:
+        accounts = await db.fetch("SELECT id FROM coexistence.whatsapp_accounts WHERE is_active = true")
+
     total_synced = 0
     for a in accounts:
         acc = await get_account_with_token(a["id"])
@@ -429,8 +649,22 @@ async def sync_all_templates_endpoint(user: dict = Depends(require_permission("t
     return {"ok": True, "synced": total_synced}
 
 @router.get("/{template_id}/payload")
-async def preview_template_payload(template_id: int, user: dict = Depends(get_current_user)):
-    tpl = await db.fetchrow("SELECT * FROM coexistence.message_templates WHERE id = $1", template_id)
+async def preview_template_payload(template_id: int, tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx.get("org_id")
+    where_org = ""
+    params = [template_id]
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND (t.org_id = ${len(params)}::uuid OR wa.org_id = ${len(params)}::uuid)"
+
+    tpl = await db.fetchrow(
+        f"""
+        SELECT t.* FROM coexistence.message_templates t
+        LEFT JOIN coexistence.whatsapp_accounts wa ON wa.id = t.whatsapp_account_id
+        WHERE t.id = $1 {where_org}
+        """,
+        *params
+    )
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
     return build_payload(dict(tpl))
