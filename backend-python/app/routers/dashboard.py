@@ -12,27 +12,25 @@ router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 RANGE_DAYS = {"7d": 7, "30d": 30, "90d": 90}
 LEAD_SOURCE_CATEGORY = os.getenv("LEAD_SOURCE_CATEGORY", "Lead Source")
 
-async def get_connected_wa(org_id: Optional[str] = None) -> Optional[str]:
+async def get_connected_wa_numbers(org_id: Optional[str] = None) -> List[str]:
     if org_id:
-        row = await db.fetchrow(
-            "SELECT display_phone_number AS wa FROM coexistence.whatsapp_accounts WHERE org_id = $1::uuid AND is_active = true ORDER BY is_default DESC, id ASC LIMIT 1",
+        rows = await db.fetch(
+            "SELECT display_phone_number AS wa FROM coexistence.whatsapp_accounts WHERE org_id = $1::uuid AND is_active = true",
             org_id
         )
     else:
-        row = await db.fetchrow(
-            "SELECT display_phone_number AS wa FROM coexistence.whatsapp_accounts WHERE is_active = true ORDER BY is_default DESC, id ASC LIMIT 1"
+        rows = await db.fetch(
+            "SELECT display_phone_number AS wa FROM coexistence.whatsapp_accounts WHERE is_active = true"
         )
-    if not row or not row.get("wa"):
-        return None
-    return normalize_phone(row["wa"])
+    return [normalize_phone(r["wa"]) for r in rows if r.get("wa") and normalize_phone(r["wa"])]
 
-def apply_scope(sql: str, params: list, admin: bool, uid: int, kind: str, wa: Optional[str]):
+def apply_scope(sql: str, params: list, admin: bool, uid: int, kind: str, wa_numbers: List[str]):
     out = list(params)
     clause = ""
-    if wa:
-        out.append(wa)
+    if wa_numbers:
+        out.append(wa_numbers)
         wp = f"${len(out)}"
-        clause += f" AND c.wa_number = {wp}" if kind == "contacts" else f" AND ch.wa_number = {wp}"
+        clause += f" AND c.wa_number = ANY({wp}::text[])" if kind == "contacts" else f" AND ch.wa_number = ANY({wp}::text[])"
     else:
         clause += " AND FALSE"
 
@@ -62,10 +60,10 @@ async def get_dashboard(
     uid = user["id"]
     r_key = range if range in RANGE_DAYS else "7d"
     days = RANGE_DAYS[r_key]
-    connected_wa = await get_connected_wa(tenant_ctx["org_id"])
+    connected_wa_numbers = await get_connected_wa_numbers(tenant_ctx["org_id"])
 
     async def q(sql: str, params: list, kind: str):
-        query_sql, query_params = apply_scope(sql, params, admin, uid, kind, connected_wa)
+        query_sql, query_params = apply_scope(sql, params, admin, uid, kind, connected_wa_numbers)
         return await db.fetch(query_sql, *query_params)
 
     cat_row = await db.fetchrow(
