@@ -2,6 +2,7 @@ import re
 import json
 import httpx
 import time
+import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form, Request
@@ -13,6 +14,8 @@ from app.middleware.tenant import get_tenant_context
 from app.services.whatsapp_service import get_account_with_token
 from app.services.account_health import mark_account_health
 from app.integrations import meta_client
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/templates", tags=["Templates"])
 
@@ -192,6 +195,16 @@ def shape_template(r: dict) -> dict:
             d[dt_col] = d[dt_col].isoformat()
     return d
 
+def map_meta_status(status: Optional[str]) -> str:
+    s = (status or "PENDING").upper()
+    if s == "APPROVED":
+        return "APPROVED"
+    if s == "REJECTED":
+        return "REJECTED"
+    if s in ("PAUSED", "DISABLED", "DRAFT"):
+        return s
+    return "SUBMITTED"
+
 @router.get("")
 async def list_templates(
     accountId: Optional[str] = None,
@@ -358,7 +371,7 @@ async def update_template(
     if not tpl:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    if tpl["status"] == "SUBMITTED":
+    if tpl["status"] in ("SUBMITTED", "PENDING"):
         raise HTTPException(status_code=409, detail="Template is under Meta review — wait for approval/rejection before editing")
     if tpl["status"] == "DISABLED":
         raise HTTPException(status_code=409, detail="DISABLED templates cannot be edited — duplicate and resubmit instead")
@@ -487,13 +500,13 @@ async def delete_template(
     if not row:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    if row.get("whatsapp_account_id") and row.get("status") in ("APPROVED", "PENDING", "PAUSED"):
+    if row.get("whatsapp_account_id") and row.get("status") in ("APPROVED", "SUBMITTED", "PENDING", "PAUSED"):
         acc = await get_account_with_token(row["whatsapp_account_id"])
         if acc and acc.get("wabaId") and acc.get("accessToken"):
             try:
                 await meta_client.delete_template(acc["wabaId"], acc["accessToken"], row["name"])
             except Exception as e:
-                print(f"[templates] Meta delete error (ignoring to delete local): {e}")
+                logger.warning(f"[templates] Meta delete error (ignoring to delete local): {e}")
 
     await db.execute("DELETE FROM coexistence.message_templates WHERE id = $1", template_id)
     return {"ok": True}
@@ -534,7 +547,7 @@ async def submit_template_endpoint(
     try:
         res = await meta_client.submit_template(acc["wabaId"], acc["accessToken"], payload)
         meta_id = res.get("id")
-        meta_status = res.get("status") or "PENDING"
+        meta_status = map_meta_status(res.get("status"))
         row = await db.fetchrow(
             """
             UPDATE coexistence.message_templates
@@ -547,6 +560,32 @@ async def submit_template_endpoint(
         await mark_account_health(acc["id"], "healthy")
         return shape_template(dict(row))
     except Exception as err:
+        err_msg = str(err)
+        # If template already exists on Meta (e.g. from a prior submission where DB update failed),
+        # look it up on Meta and synchronize the local row.
+        if "already exists" in err_msg.lower():
+            try:
+                meta_list = await meta_client.list_templates(acc["wabaId"], acc["accessToken"])
+                match = next((m for m in meta_list if m.get("name") == tpl["name"] and m.get("language") == tpl["language"]), None)
+                if match:
+                    m_status = map_meta_status(match.get("status"))
+                    m_id = match.get("id")
+                    row = await db.fetchrow(
+                        """
+                        UPDATE coexistence.message_templates
+                        SET status = $1, meta_template_id = COALESCE(meta_template_id, $2),
+                            submitted_at = COALESCE(submitted_at, NOW()), updated_at = NOW(),
+                            last_synced_at = NOW()
+                        WHERE id = $3
+                        RETURNING *
+                        """,
+                        m_status, m_id, template_id
+                    )
+                    await mark_account_health(acc["id"], "healthy")
+                    return shape_template(dict(row))
+            except Exception as sync_err:
+                logger.warning(f"[templates] auto-sync fallback failed: {sync_err}")
+
         is_auth = "401" in str(err) or "190" in str(err)
         await mark_account_health(acc["id"], "invalid_token" if is_auth else "unknown_error", str(err))
         raise HTTPException(status_code=400, detail=str(err))
@@ -587,23 +626,26 @@ async def sync_template_endpoint(
         meta_list = await meta_client.list_templates(acc["wabaId"], acc["accessToken"])
         match = next((m for m in meta_list if m.get("name") == tpl["name"] and m.get("language") == tpl["language"]), None)
         if match:
+            local_status = map_meta_status(match.get("status", tpl["status"]))
             row = await db.fetchrow(
                 """
                 UPDATE coexistence.message_templates
                 SET status = $1, quality_score = $2, rejection_reason = $3,
-                    previous_category = $4, last_synced_at = NOW(), updated_at = NOW()
-                WHERE id = $5
+                    previous_category = $4, meta_template_id = COALESCE(meta_template_id, $5),
+                    last_synced_at = NOW(), updated_at = NOW()
+                WHERE id = $6
                 RETURNING *
                 """,
-                match.get("status", tpl["status"]),
+                local_status,
                 match.get("quality_score", {}).get("score") if isinstance(match.get("quality_score"), dict) else match.get("quality_score"),
                 match.get("rejected_reason"),
                 match.get("previous_category"),
+                match.get("id"),
                 template_id
             )
             return shape_template(dict(row))
     except Exception as e:
-        print(f"[templates] sync error: {e}")
+        logger.error(f"[templates] sync error: {e}")
 
     return shape_template(dict(tpl))
 
@@ -630,21 +672,24 @@ async def sync_all_templates_endpoint(
                 m_lang = m.get("language")
                 m_status = m.get("status")
                 if m_name and m_lang and m_status:
+                    local_status = map_meta_status(m_status)
                     await db.execute(
                         """
                         UPDATE coexistence.message_templates
                         SET status = $1, quality_score = $2, rejection_reason = $3,
+                            meta_template_id = COALESCE(meta_template_id, $4),
                             last_synced_at = NOW(), updated_at = NOW()
-                        WHERE whatsapp_account_id = $4 AND lower(name) = lower($5) AND language = $6
+                        WHERE whatsapp_account_id = $5 AND lower(name) = lower($6) AND language = $7
                         """,
-                        m_status,
+                        local_status,
                         m.get("quality_score", {}).get("score") if isinstance(m.get("quality_score"), dict) else m.get("quality_score"),
                         m.get("rejected_reason"),
+                        m.get("id"),
                         acc["id"], m_name, m_lang
                     )
                     total_synced += 1
         except Exception as e:
-            print(f"[templates] sync_all for account {acc['id']} failed: {e}")
+            logger.error(f"[templates] sync_all for account {acc['id']} failed: {e}")
 
     return {"ok": True, "synced": total_synced}
 

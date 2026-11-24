@@ -85,26 +85,41 @@ async def list_accounts(
 
     if org_id:
         params.append(org_id)
-        query += f" AND org_id = ${len(params)}"
+        query += f" AND org_id = ${len(params)}::uuid"
 
     query += " ORDER BY is_default DESC, display_name ASC"
     rows = await db.fetch(query, *params)
-    org_features = (tenant_ctx.get("org") or {}).get("settings", {}).get("features", {})
-    include_secrets = user.get("role") == "admin" or bool(org_features.get("allow_wa_config"))
+    org_settings = (tenant_ctx.get("org") or {}).get("settings")
+    if not isinstance(org_settings, dict):
+        org_settings = {}
+    org_features = org_settings.get("features", {})
+    if not isinstance(org_features, dict):
+        org_features = {}
+    include_secrets = user.get("role") in ("admin", "org_admin") or bool(org_features.get("allow_wa_config"))
     return [public_shape(dict(r), include_secrets=include_secrets) for r in rows]
 
 @router.get("/by-phone/{phone}")
-async def resolve_by_phone(phone: str, user: dict = Depends(get_current_user)):
-    acc = await get_account_by_phone_number(phone)
+async def resolve_by_phone(phone: str, tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx.get("org_id")
+    clean_phone = "".join(filter(str.isdigit, phone))
+    acc = await db.fetchrow(
+        """
+        SELECT * FROM coexistence.whatsapp_accounts
+        WHERE regexp_replace(display_phone_number, '\\D', '', 'g') = $1
+          AND ($2::uuid IS NULL OR org_id = $2::uuid)
+        LIMIT 1
+        """,
+        clean_phone, org_id
+    )
     if not acc:
         raise HTTPException(status_code=404, detail="No WhatsApp Business account registered for this phone")
     return {
         "id": acc["id"],
-        "displayName": acc["displayName"],
-        "displayPhoneNumber": acc["displayPhoneNumber"],
-        "phoneNumberId": acc["phoneNumberId"],
-        "wabaId": acc["wabaId"],
-        "isActive": acc["isActive"]
+        "displayName": acc["display_name"],
+        "displayPhoneNumber": acc["display_phone_number"],
+        "phoneNumberId": acc["phone_number_id"],
+        "wabaId": acc["waba_id"],
+        "isActive": acc["is_active"]
     }
 
 @router.get("/{account_id}")
@@ -114,9 +129,9 @@ async def get_account(account_id: int, tenant_ctx: dict = Depends(get_tenant_con
 
     query = "SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1"
     params = [account_id]
-    if org_id and user.get("role") != "admin":
+    if org_id:
         params.append(org_id)
-        query += f" AND org_id = ${len(params)}"
+        query += f" AND org_id = ${len(params)}::uuid"
 
     row = await db.fetchrow(query, *params)
     if not row:
@@ -138,7 +153,7 @@ async def create_account(
         raise HTTPException(status_code=400, detail="Phone Number ID, WhatsApp Business Account ID and Permanent Access Token are required")
 
     if org_id:
-        existing = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.whatsapp_accounts WHERE org_id = $1", org_id)
+        existing = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.whatsapp_accounts WHERE org_id = $1::uuid", org_id)
         if existing and existing >= 1:
             raise HTTPException(status_code=409, detail=ORG_LIMIT_DETAIL)
 
@@ -167,7 +182,7 @@ async def create_account(
             INSERT INTO coexistence.whatsapp_accounts
               (display_name, display_phone_number, phone_number_id, waba_id, meta_app_id,
                access_token_encrypted, verify_token_encrypted, meta_app_secret_encrypted, is_default, is_active, org_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, TRUE, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, TRUE, $9::uuid)
             RETURNING *
             """,
             display_name, display_phone_number, phone_number_id, waba_id,
@@ -190,8 +205,8 @@ async def update_account(
     admin: dict = Depends(require_permission("admin-settings:whatsapp-accounts"))
 ):
     org_id = tenant_ctx.get("org_id")
-    if org_id and admin.get("role") != "admin":
-        current = await db.fetchrow("SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2", account_id, org_id)
+    if org_id:
+        current = await db.fetchrow("SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid", account_id, org_id)
     else:
         current = await db.fetchrow("SELECT * FROM coexistence.whatsapp_accounts WHERE id = $1", account_id)
     if not current:
@@ -255,7 +270,12 @@ async def update_account(
         params.append(payload.isActive)
         sets.append(f"is_active = ${len(params)}")
 
-    query = f"UPDATE coexistence.whatsapp_accounts SET {', '.join(sets)} WHERE id = $1 RETURNING *"
+    where_clause = "WHERE id = $1"
+    if org_id:
+        params.append(org_id)
+        where_clause += f" AND org_id = ${len(params)}::uuid"
+
+    query = f"UPDATE coexistence.whatsapp_accounts SET {', '.join(sets)} {where_clause} RETURNING *"
     try:
         updated_row = await db.fetchrow(query, *params)
     except Exception as err:
@@ -273,12 +293,12 @@ async def delete_account(
     admin: dict = Depends(require_permission("admin-settings:whatsapp-accounts"))
 ):
     org_id = tenant_ctx.get("org_id")
-    cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.whatsapp_accounts WHERE ($1::uuid IS NULL OR org_id = $1)", org_id if admin.get("role") != "admin" else None)
+    cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.whatsapp_accounts WHERE org_id = $1::uuid", org_id)
     if cnt and cnt <= 1:
         raise HTTPException(status_code=409, detail="Cannot delete the only WhatsApp Business account. Edit it to change the connected number.")
     
-    if org_id and admin.get("role") != "admin":
-        result = await db.execute("DELETE FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2", account_id, org_id)
+    if org_id:
+        result = await db.execute("DELETE FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid", account_id, org_id)
     else:
         result = await db.execute("DELETE FROM coexistence.whatsapp_accounts WHERE id = $1", account_id)
     if result.endswith(" 0"):

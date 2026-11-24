@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.database import db
 from app.middleware.auth import get_current_user, require_permission
+from app.middleware.tenant import get_tenant_context
 from app.util import pg_storage
 from app.integrations import meta_client
 from app.services.whatsapp_service import get_account_with_token
@@ -68,16 +69,21 @@ class MediaUpdate(BaseModel):
     autoResync: Optional[bool] = None
 
 @router.get("")
-async def list_media(accountId: Optional[int] = None, user: dict = Depends(require_permission("media-library"))):
+async def list_media(
+    accountId: Optional[int] = None,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("media-library"))
+):
     await mark_expired()
-    params = []
+    org_id = tenant_ctx["org_id"]
+    params = [org_id]
     acc_filter = ""
     if accountId:
         params.append(accountId)
         acc_filter = f"AND (whatsapp_account_id = ${len(params)} OR whatsapp_account_id IS NULL)"
 
     media_rows = await db.fetch(
-        f"SELECT * FROM coexistence.media_library WHERE deleted_at IS NULL {acc_filter} ORDER BY uploaded_at DESC LIMIT 500",
+        f"SELECT * FROM coexistence.media_library WHERE deleted_at IS NULL AND org_id = $1::uuid {acc_filter} ORDER BY uploaded_at DESC LIMIT 500",
         *params
     )
     ids = [r["id"] for r in media_rows]
@@ -107,6 +113,7 @@ async def upload_media(
     name: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     accountId: Optional[int] = Form(None),
+    tenant_ctx: dict = Depends(get_tenant_context),
     user: dict = Depends(require_permission("media-library"))
 ):
     contents = await file.read()
@@ -115,6 +122,7 @@ async def upload_media(
     if len(contents) > 100 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 100MB)")
 
+    org_id = tenant_ctx["org_id"]
     mime = file.content_type or "application/octet-stream"
     sha = hashlib.sha256(contents).hexdigest()
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -124,8 +132,12 @@ async def upload_media(
 
     target_account_id = accountId
     if not target_account_id:
-        def_row = await db.fetchrow("SELECT id FROM coexistence.whatsapp_accounts ORDER BY is_default DESC, id ASC LIMIT 1")
+        def_row = await db.fetchrow("SELECT id FROM coexistence.whatsapp_accounts WHERE org_id = $1::uuid ORDER BY is_default DESC, id ASC LIMIT 1", org_id)
         target_account_id = def_row["id"] if def_row else None
+    else:
+        acc_check = await db.fetchrow("SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid", target_account_id, org_id)
+        if not acc_check:
+            raise HTTPException(status_code=403, detail="WhatsApp account does not belong to your organization")
 
     await pg_storage.ensure_bucket()
     await pg_storage.put_object(object_key, contents, mime)
@@ -137,12 +149,12 @@ async def upload_media(
         """
         INSERT INTO coexistence.media_library
           (filename, original_name, name, mime_type, size_bytes, media_type,
-           storage_backend, storage_key, sha256, notes, uploaded_by, whatsapp_account_id)
-        VALUES ($1, $2, $3, $4, $5, $6, 'postgres', $7, $8, $9, $10, $11)
+           storage_backend, storage_key, sha256, notes, uploaded_by, whatsapp_account_id, org_id)
+        VALUES ($1, $2, $3, $4, $5, $6, 'postgres', $7, $8, $9, $10, $11, $12::uuid)
         RETURNING *
         """,
         stored, file.filename, clean_name, mime, len(contents), m_type,
-        object_key, sha, clean_notes, user.get("id"), target_account_id
+        object_key, sha, clean_notes, user.get("id"), target_account_id, org_id
     )
     return {"media": row_to_media(dict(row))}
 
@@ -150,10 +162,12 @@ async def upload_media(
 async def update_media(
     media_id: int,
     payload: MediaUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
     user: dict = Depends(require_permission("media-library"))
 ):
+    org_id = tenant_ctx["org_id"]
     fields = []
-    vals = [media_id]
+    vals = [media_id, org_id]
     if payload.autoResync is not None:
         vals.append(payload.autoResync)
         fields.append(f"auto_resync = ${len(vals)}")
@@ -167,17 +181,22 @@ async def update_media(
     if not fields:
         raise HTTPException(status_code=400, detail="Nothing to update")
 
-    query = f"UPDATE coexistence.media_library SET {', '.join(fields)} WHERE id = $1 AND deleted_at IS NULL RETURNING *"
+    query = f"UPDATE coexistence.media_library SET {', '.join(fields)} WHERE id = $1 AND org_id = $2::uuid AND deleted_at IS NULL RETURNING *"
     row = await db.fetchrow(query, *vals)
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
     return {"media": row_to_media(dict(row))}
 
 @router.delete("/{media_id}")
-async def delete_media(media_id: int, user: dict = Depends(require_permission("media-library"))):
+async def delete_media(
+    media_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("media-library"))
+):
+    org_id = tenant_ctx["org_id"]
     row = await db.fetchrow(
-        "UPDATE coexistence.media_library SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING storage_key",
-        media_id
+        "UPDATE coexistence.media_library SET deleted_at = NOW() WHERE id = $1 AND org_id = $2::uuid AND deleted_at IS NULL RETURNING storage_key",
+        media_id, org_id
     )
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
@@ -185,10 +204,15 @@ async def delete_media(media_id: int, user: dict = Depends(require_permission("m
     return {"ok": True}
 
 @router.get("/{media_id}/download")
-async def download_media(media_id: int, user: dict = Depends(get_current_user)):
+async def download_media(
+    media_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(get_current_user)
+):
+    org_id = tenant_ctx["org_id"]
     row = await db.fetchrow(
-        "SELECT storage_key, mime_type, original_name, name FROM coexistence.media_library WHERE id = $1 AND deleted_at IS NULL",
-        media_id
+        "SELECT storage_key, mime_type, original_name, name FROM coexistence.media_library WHERE id = $1 AND org_id = $2::uuid AND deleted_at IS NULL",
+        media_id, org_id
     )
     if not row:
         raise HTTPException(status_code=404, detail="Not found")
@@ -200,11 +224,14 @@ async def download_media(media_id: int, user: dict = Depends(get_current_user)):
         headers={"Content-Disposition": f'inline; filename="{display_name}"'}
     )
 
-async def sync_media_to_account(media_id: int, account_id: int) -> dict:
-    media = await db.fetchrow(
-        "SELECT * FROM coexistence.media_library WHERE id = $1 AND deleted_at IS NULL",
-        media_id
-    )
+async def sync_media_to_account(media_id: int, account_id: int, org_id: Optional[str] = None) -> dict:
+    where = "WHERE id = $1 AND deleted_at IS NULL"
+    params: List[Any] = [media_id]
+    if org_id:
+        params.append(org_id)
+        where += f" AND org_id = ${len(params)}::uuid"
+
+    media = await db.fetchrow(f"SELECT * FROM coexistence.media_library {where}", *params)
     if not media:
         raise HTTPException(status_code=404, detail="Media not found")
 
@@ -214,6 +241,14 @@ async def sync_media_to_account(media_id: int, account_id: int) -> dict:
     account = await get_account_with_token(account_id)
     if not account:
         raise HTTPException(status_code=404, detail="WhatsApp account not found")
+
+    if org_id:
+        acc_valid = await db.fetchrow(
+            "SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2::uuid",
+            account_id, org_id
+        )
+        if not acc_valid:
+            raise HTTPException(status_code=403, detail="WhatsApp account does not belong to your organization")
 
     await db.execute(
         """
@@ -262,7 +297,8 @@ async def sync_media_to_account(media_id: int, account_id: int) -> dict:
 async def sync_media_endpoint(
     media_id: int,
     account_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
     user: dict = Depends(require_permission("media-library"))
 ):
-    sync = await sync_media_to_account(media_id, account_id)
+    sync = await sync_media_to_account(media_id, account_id, org_id=tenant_ctx["org_id"])
     return {"sync": sync}

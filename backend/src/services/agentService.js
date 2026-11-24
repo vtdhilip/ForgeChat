@@ -122,11 +122,17 @@ function normalizeMediaGroups(raw) {
     .filter(g => g.description && (g.mediaIds.length > 0 || g.links.length > 0 || g.templateId != null));
 }
 
-async function getAiModel(id) {
+async function getAiModel(id, orgId = null) {
   if (id == null || id === '') return null;
+  const params = [id];
+  let filter = '';
+  if (orgId) {
+    params.push(orgId);
+    filter = `AND org_id = $${params.length}`;
+  }
   const { rows } = await pool.query(
-    'SELECT id, provider FROM coexistence.ai_models WHERE id = $1',
-    [id],
+    `SELECT id, provider FROM coexistence.ai_models WHERE id = $1 ${filter}`,
+    params,
   );
   return rows[0] || null;
 }
@@ -149,7 +155,7 @@ async function listAgents(orgId = null) {
   let orgClause = '';
   if (orgId) {
     params.push(orgId);
-    orgClause = `WHERE (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+    orgClause = `WHERE a.org_id = $${params.length}`;
   }
   const { rows } = await pool.query(
     `SELECT a.*,
@@ -176,7 +182,7 @@ async function getAgent(id, orgId = null) {
   let orgClause = '';
   if (orgId) {
     params.push(orgId);
-    orgClause = `AND (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+    orgClause = `AND a.org_id = $${params.length}`;
   }
   const { rows } = await pool.query(
     `SELECT a.*, am.provider AS ai_provider, am.label AS ai_label
@@ -211,18 +217,26 @@ async function createAgent(b = {}, orgId = null) {
   const aiModelId = b.aiModelId || null;
   const llmModel = b.llmModel ? String(b.llmModel).trim() : null;
 
+  if (b.waAccountId && orgId) {
+    const { rows: waRows } = await pool.query(
+      'SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2',
+      [b.waAccountId, orgId]
+    );
+    if (waRows.length === 0) throw new ApiError(403, 'WhatsApp account does not belong to your organization');
+  }
+
   if (status === 'active') {
     if (!aiModelId || !llmModel) {
       throw new ApiError(400, 'An active agent needs a connected AI model and a model selection.');
     }
-    const model = await getAiModel(aiModelId);
-    if (!model) throw new ApiError(400, 'Selected AI model no longer exists.');
+    const model = await getAiModel(aiModelId, orgId);
+    if (!model) throw new ApiError(400, 'Selected AI model no longer exists or does not belong to your organization.');
     if (!SUPPORTED_PROVIDERS.has(model.provider)) {
       throw new ApiError(400, `Provider '${model.provider}' isn't supported by agents.`);
     }
   } else if (aiModelId) {
-    const model = await getAiModel(aiModelId);
-    if (!model) throw new ApiError(400, 'Selected AI model no longer exists.');
+    const model = await getAiModel(aiModelId, orgId);
+    if (!model) throw new ApiError(400, 'Selected AI model no longer exists or does not belong to your organization.');
   }
   const isActive = status === 'active' ? !!b.isActive : false;
 
@@ -278,7 +292,7 @@ async function updateAgent(id, b = {}, orgId = null) {
   let orgClause = '';
   if (orgId) {
     checkParams.push(orgId);
-    orgClause = `AND (org_id = $${checkParams.length} OR org_id IS NULL)`;
+    orgClause = `AND org_id = $${checkParams.length}`;
   }
   const { rows: existing } = await pool.query(
     `SELECT * FROM coexistence.agents WHERE id = $1 ${orgClause}`,
@@ -293,9 +307,17 @@ async function updateAgent(id, b = {}, orgId = null) {
   let   effIsActive  = b.isActive  !== undefined ? !!b.isActive : cur.is_active;
   if (effStatus === 'draft') effIsActive = false;
 
+  if (b.waAccountId && orgId) {
+    const { rows: waRows } = await pool.query(
+      'SELECT id FROM coexistence.whatsapp_accounts WHERE id = $1 AND org_id = $2',
+      [b.waAccountId, orgId]
+    );
+    if (waRows.length === 0) throw new ApiError(403, 'WhatsApp account does not belong to your organization');
+  }
+
   if (effModelId) {
-    const model = await getAiModel(effModelId);
-    if (!model) throw new ApiError(400, 'Selected AI model no longer exists.');
+    const model = await getAiModel(effModelId, orgId);
+    if (!model) throw new ApiError(400, 'Selected AI model no longer exists or does not belong to your organization.');
     if ((effStatus === 'active' || effIsActive) && !SUPPORTED_PROVIDERS.has(model.provider)) {
       throw new ApiError(400, `Provider '${model.provider}' isn't supported by agents.`);
     }
@@ -363,7 +385,7 @@ async function deleteAgent(id, orgId = null) {
   let orgClause = '';
   if (orgId) {
     params.push(orgId);
-    orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    orgClause = `AND org_id = $${params.length}`;
   }
   const { rowCount } = await pool.query(
     `DELETE FROM coexistence.agents WHERE id = $1 ${orgClause}`,

@@ -181,7 +181,7 @@ router.get('/numbers', async (req, res) => {
     const params = [];
     if (req.orgId) {
       params.push(req.orgId);
-      extraFilter += ` AND (org_id = $${params.length} OR org_id IS NULL)`;
+      extraFilter += ` AND org_id = $${params.length}`;
     }
     if (!isAdmin(req.user)) {
       params.push(req.user.id);
@@ -192,7 +192,7 @@ router.get('/numbers', async (req, res) => {
     let acctOrgFilter = '';
     if (req.orgId) {
       params.push(req.orgId);
-      acctOrgFilter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      acctOrgFilter = `AND org_id = $${params.length}`;
     }
     const { rows } = await pool.query(`
       SELECT
@@ -781,7 +781,7 @@ router.get('/messages', async (req, res) => {
       `message_type <> 'status'`,
     ];
     if (req.orgId) {
-      conditions.push(`(org_id = $${paramIdx} OR org_id IS NULL)`);
+      conditions.push(`org_id = $${paramIdx}`);
       params.push(req.orgId);
       paramIdx++;
     }

@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 from app.core.database import db
 from app.core.security import hash_password
 from app.core.permissions import PAGES, ROLE_PAGE_DEFAULTS
-from app.middleware.tenant import require_org_admin
+from app.middleware.tenant import require_org_admin, get_tenant_context
 from app.middleware.auth import get_current_user
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
@@ -285,13 +285,16 @@ async def reset_password(user_id: int, payload: ResetPasswordRequest, tenant_ctx
 team_members_router = APIRouter(prefix="/api/team-members", tags=["Team Members"])
 
 @team_members_router.get("")
-async def list_team_members(user: dict = Depends(get_current_user)):
+async def list_team_members(tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx["org_id"]
     rows = await db.fetch(
         """
         SELECT id, name, phone_number, bda_id, address, email
         FROM coexistence.team_members
+        WHERE org_id = $1::uuid
         ORDER BY id ASC
-        """
+        """,
+        org_id
     )
     return [
         {

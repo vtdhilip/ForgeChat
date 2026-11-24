@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.core.database import db
 from app.middleware.auth import require_permission, get_current_user
+from app.middleware.tenant import get_tenant_context
 
 router = APIRouter(prefix="/api/contact-fields", tags=["Contact Fields"])
 
@@ -33,22 +34,30 @@ class ContactFieldUpdate(BaseModel):
     sortOrder: Optional[int] = None
 
 @router.get("")
-async def list_contact_fields(user: dict = Depends(get_current_user)):
+async def list_contact_fields(tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx["org_id"]
     rows = await db.fetch(
         """
         SELECT id, name, description, field_type, sort_order, created_at, updated_at
         FROM coexistence.contact_field_definitions
+        WHERE org_id = $1::uuid
         ORDER BY sort_order ASC, name ASC
-        """
+        """,
+        org_id
     )
     return [dict(r) for r in rows]
 
 @router.post("", status_code=201)
-async def create_contact_field(payload: ContactFieldCreate, user: dict = Depends(require_permission("admin-settings:fields"))):
+async def create_contact_field(
+    payload: ContactFieldCreate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:fields"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Field name is required")
     
+    org_id = tenant_ctx["org_id"]
     field_id = gen_id("fld")
     desc = payload.description.strip() if payload.description else None
     ftype = norm_type(payload.fieldType)
@@ -57,20 +66,29 @@ async def create_contact_field(payload: ContactFieldCreate, user: dict = Depends
     row = await db.fetchrow(
         """
         INSERT INTO coexistence.contact_field_definitions
-          (id, name, description, field_type, sort_order)
-        VALUES ($1, $2, $3, $4, $5)
+          (id, name, description, field_type, sort_order, org_id)
+        VALUES ($1, $2, $3, $4, $5, $6::uuid)
         RETURNING id, name, description, field_type, sort_order, created_at, updated_at
         """,
-        field_id, name, desc, ftype, sort_order
+        field_id, name, desc, ftype, sort_order, org_id
     )
     return dict(row)
 
 @router.put("/{field_id}")
-async def update_contact_field(field_id: str, payload: ContactFieldUpdate, user: dict = Depends(require_permission("admin-settings:fields"))):
+async def update_contact_field(
+    field_id: str,
+    payload: ContactFieldUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:fields"))
+):
     if payload.name is not None and not payload.name.strip():
         raise HTTPException(status_code=400, detail="Field name cannot be empty")
     
-    current = await db.fetchrow("SELECT * FROM coexistence.contact_field_definitions WHERE id = $1", field_id)
+    org_id = tenant_ctx["org_id"]
+    current = await db.fetchrow(
+        "SELECT * FROM coexistence.contact_field_definitions WHERE id = $1 AND org_id = $2::uuid",
+        field_id, org_id
+    )
     if not current:
         raise HTTPException(status_code=404, detail="Field not found")
 
@@ -87,18 +105,23 @@ async def update_contact_field(field_id: str, payload: ContactFieldUpdate, user:
           field_type = $4,
           sort_order = $5,
           updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND org_id = $6::uuid
         RETURNING id, name, description, field_type, sort_order, created_at, updated_at
         """,
-        field_id, new_name, new_desc, new_ftype, new_sort
+        field_id, new_name, new_desc, new_ftype, new_sort, org_id
     )
     return dict(row)
 
 @router.delete("/{field_id}")
-async def delete_contact_field(field_id: str, user: dict = Depends(require_permission("admin-settings:fields"))):
+async def delete_contact_field(
+    field_id: str,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:fields"))
+):
+    org_id = tenant_ctx["org_id"]
     result = await db.execute(
-        "DELETE FROM coexistence.contact_field_definitions WHERE id = $1",
-        field_id
+        "DELETE FROM coexistence.contact_field_definitions WHERE id = $1 AND org_id = $2::uuid",
+        field_id, org_id
     )
     if result.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Field not found")

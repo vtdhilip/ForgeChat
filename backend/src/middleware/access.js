@@ -91,7 +91,7 @@ async function assertWaAccess(req, res, waNumber) {
   let orgClause = '';
   if (req.orgId) {
     params.push(req.orgId);
-    orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    orgClause = `AND org_id = $${params.length}`;
   }
 
   // Account check: ensure the WhatsApp account belongs to caller's org
@@ -99,7 +99,7 @@ async function assertWaAccess(req, res, waNumber) {
     const { rows: accRows } = await pool.query(
       `SELECT 1 FROM coexistence.whatsapp_accounts
         WHERE regexp_replace(display_phone_number, '[^0-9]', '', 'g') = $1
-          AND (org_id = $2 OR org_id IS NULL) LIMIT 1`,
+          AND org_id = $2 LIMIT 1`,
       [clean, req.orgId]
     );
     if (accRows.length === 0) {
@@ -132,7 +132,7 @@ async function assertContactAccess(req, res, waNumber, contactNumber) {
   let orgClause = '';
   if (req.orgId) {
     params.push(req.orgId);
-    orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    orgClause = `AND org_id = $${params.length}`;
   }
 
   // If org admin / global admin: must still belong to tenant's org if req.orgId is active

@@ -212,11 +212,11 @@ async function discovery(res, fn, fallback) {
 
 /* --------- discovery --------- */
 apiRouter.get('/wa-accounts', requireCap('discovery'), (req, res) =>
-  discovery(res, () => mcpService.listWaAccounts(), 'Failed to list WhatsApp accounts'));
+  discovery(res, () => mcpService.listWaAccounts(req.orgId), 'Failed to list WhatsApp accounts'));
 apiRouter.get('/models', requireCap('discovery'), (req, res) =>
-  discovery(res, () => mcpService.listModels(), 'Failed to list models'));
+  discovery(res, () => mcpService.listModels(req.orgId), 'Failed to list models'));
 apiRouter.get('/google-accounts', requireCap('discovery'), (req, res) =>
-  discovery(res, () => mcpService.listGoogleAccounts(), 'Failed to list Google accounts'));
+  discovery(res, () => mcpService.listGoogleAccounts(req.orgId), 'Failed to list Google accounts'));
 apiRouter.get('/spreadsheets', requireCap('discovery'), (req, res) =>
   discovery(res, () => mcpService.searchSpreadsheets({ googleAccountId: req.query.googleAccountId, q: String(req.query.q || ''), pageSize: parseInt(req.query.pageSize || '50', 10) }), 'Failed to list spreadsheets'));
 apiRouter.get('/spreadsheets/:id/tabs', requireCap('discovery'), (req, res) =>
@@ -233,17 +233,18 @@ apiRouter.get('/media', requireCap('discovery'), (req, res) =>
   discovery(res, () => mcpService.listMedia(
     req.query.type ? String(req.query.type) : null,
     req.query.name ? String(req.query.name) : null,
+    req.orgId,
   ), 'Failed to list media'));
 apiRouter.get('/templates', requireCap('discovery'), (req, res) =>
-  discovery(res, () => mcpService.listTemplates(req.query.waAccountId), 'Failed to list templates'));
+  discovery(res, () => mcpService.listTemplates(req.query.waAccountId, req.orgId), 'Failed to list templates'));
 apiRouter.get('/templates/:id', requireCap('discovery'), (req, res) =>
-  discovery(res, () => mcpService.getTemplate(req.params.id), 'Failed to fetch template'));
+  discovery(res, () => mcpService.getTemplate(req.params.id, req.orgId), 'Failed to fetch template'));
 apiRouter.get('/agents', requireCap('discovery'), async (req, res) => {
-  try { res.json(await agentService.listAgents()); } catch (err) { sendErr(res, err, 'Failed to list agents'); }
+  try { res.json(await agentService.listAgents(req.orgId)); } catch (err) { sendErr(res, err, 'Failed to list agents'); }
 });
 apiRouter.get('/agents/:id', requireCap('discovery'), async (req, res) => {
   try {
-    const agent = await agentService.getAgent(req.params.id);
+    const agent = await agentService.getAgent(req.params.id, req.orgId);
     if (!agent) return res.status(404).json({ error: 'Not found' });
     res.json(agent);
   } catch (err) { sendErr(res, err, 'Failed to fetch agent'); }

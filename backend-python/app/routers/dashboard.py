@@ -69,8 +69,8 @@ async def get_dashboard(
         return await db.fetch(query_sql, *query_params)
 
     cat_row = await db.fetchrow(
-        "SELECT id FROM coexistence.categories WHERE LOWER(name) = LOWER($1) ORDER BY created_at LIMIT 1",
-        LEAD_SOURCE_CATEGORY
+        "SELECT id FROM coexistence.categories WHERE LOWER(name) = LOWER($1) AND org_id = $2::uuid ORDER BY created_at LIMIT 1",
+        LEAD_SOURCE_CATEGORY, tenant_ctx["org_id"]
     )
     lead_source_cat_id = cat_row["id"] if cat_row else None
 
@@ -239,7 +239,9 @@ async def get_dashboard(
             SELECT count(*) FILTER (WHERE status='active')::int AS active,
                    count(*)::int AS total
             FROM coexistence.chatbots
-            """
+            WHERE org_id = $1::uuid
+            """,
+            tenant_ctx["org_id"]
         )
         run_row = await db.fetchrow(
             """
@@ -248,23 +250,23 @@ async def get_dashboard(
                    count(*) FILTER (WHERE status='error')::int AS error,
                    count(*) FILTER (WHERE status='paused')::int AS paused
             FROM coexistence.automation_executions
-            WHERE started_at >= NOW() - ($1 * INTERVAL '1 day')
+            WHERE org_id = $2::uuid AND started_at >= NOW() - ($1 * INTERVAL '1 day')
             """,
-            days
+            days, tenant_ctx["org_id"]
         )
         automations = {
-            "active": auto_counts["active"],
-            "total": auto_counts["total"],
+            "active": auto_counts["active"] if auto_counts else 0,
+            "total": auto_counts["total"] if auto_counts else 0,
             "runs": dict(run_row) if run_row else {"total": 0, "success": 0, "error": 0, "paused": 0},
             "successRate": round((run_row["success"] / run_row["total"]) * 100) if run_row and run_row["total"] > 0 else None,
         }
         kpis.append({
             "key": "automations",
             "label": "Active Automations",
-            "value": auto_counts["active"],
+            "value": auto_counts["active"] if auto_counts else 0,
             "unit": "",
             "delta": None,
-            "sub": f"of {auto_counts['total']} total",
+            "sub": f"of {auto_counts['total'] if auto_counts else 0} total",
             "tooltip": "Automation flows currently enabled.",
         })
 
@@ -272,9 +274,9 @@ async def get_dashboard(
             """
             SELECT count(*)::int AS campaigns
             FROM coexistence.broadcasts
-            WHERE created_at >= NOW() - ($1 * INTERVAL '1 day')
+            WHERE org_id = $2::uuid AND created_at >= NOW() - ($1 * INTERVAL '1 day')
             """,
-            days
+            days, tenant_ctx["org_id"]
         )
         recent_bc = await db.fetch(
             """
@@ -285,10 +287,12 @@ async def get_dashboard(
                    count(*) FILTER (WHERE l.action='BROADCAST' AND l.status='FAILED')::int AS failed
             FROM coexistence.broadcasts b
             LEFT JOIN coexistence.broadcast_logs l ON l.broadcast_id = b.id
+            WHERE b.org_id = $1::uuid
             GROUP BY b.id
             ORDER BY b.created_at DESC
             LIMIT 5
-            """
+            """,
+            tenant_ctx["org_id"]
         )
         broadcasts = {
             "campaigns": bc_summary["campaigns"] if bc_summary else 0,
@@ -311,7 +315,7 @@ async def get_dashboard(
             "tooltip": "Your customer threads with at least one message.",
         })
 
-    all_cats = await db.fetch("SELECT id, name FROM coexistence.categories ORDER BY name")
+    all_cats = await db.fetch("SELECT id, name FROM coexistence.categories WHERE org_id = $1::uuid ORDER BY name", tenant_ctx["org_id"])
 
     return {
         "range": r_key,

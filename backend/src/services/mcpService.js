@@ -85,7 +85,7 @@ async function listWaAccounts(orgId = null) {
   let filter = '';
   if (orgId) {
     params.push(orgId);
-    filter = `WHERE (org_id = $1 OR org_id IS NULL)`;
+    filter = `WHERE org_id = $1`;
   }
   const { rows } = await pool.query(
     `SELECT id, display_name, display_phone_number, is_active, is_default
@@ -101,9 +101,16 @@ async function listWaAccounts(orgId = null) {
   }));
 }
 
-async function listModels() {
+async function listModels(orgId = null) {
+  const params = [];
+  let filter = '';
+  if (orgId) {
+    params.push(orgId);
+    filter = `WHERE org_id = $1`;
+  }
   const { rows } = await pool.query(
-    `SELECT id, provider, label FROM coexistence.ai_models ORDER BY created_at DESC`,
+    `SELECT id, provider, label FROM coexistence.ai_models ${filter} ORDER BY created_at DESC`,
+    params,
   );
   return rows
     .filter(r => MODEL_CATALOG[r.provider])
@@ -124,7 +131,7 @@ async function listGoogleAccounts(orgId = null) {
   let filter = '';
   if (orgId) {
     params.push(orgId);
-    filter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    filter = `AND org_id = $${params.length}`;
   }
   const { rows } = await pool.query(
     `SELECT id, account_label, health_status FROM coexistence.oauth_credentials
@@ -181,7 +188,7 @@ async function listMedia(type, name, orgId = null) {
   let filter = '';
   if (orgId) {
     params.push(orgId);
-    filter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    filter = `AND org_id = $${params.length}`;
   }
   const { rows } = await pool.query(
     `SELECT id, name, original_name, mime_type, media_type
@@ -201,7 +208,7 @@ async function listTemplates(waAccountId, orgId = null) {
   let filter = '';
   if (orgId) {
     params.push(orgId);
-    filter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    filter = `AND org_id = $${params.length}`;
   }
   const { rows } = await pool.query(
     `SELECT id, name, language, status, category, whatsapp_account_id
@@ -217,12 +224,18 @@ async function listTemplates(waAccountId, orgId = null) {
   }));
 }
 
-async function getTemplate(id) {
+async function getTemplate(id, orgId = null) {
+  const params = [parseInt(id, 10)];
+  let filter = '';
+  if (orgId) {
+    params.push(orgId);
+    filter = `AND org_id = $${params.length}`;
+  }
   const { rows } = await pool.query(
     `SELECT id, name, language, status, category, whatsapp_account_id,
             header_type, header_text, body, footer, buttons, samples
-       FROM coexistence.message_templates WHERE id = $1`,
-    [parseInt(id, 10)],
+       FROM coexistence.message_templates WHERE id = $1 ${filter}`,
+    params,
   );
   if (!rows[0]) { const e = new Error('Template not found'); e.status = 404; throw e; }
   const r = rows[0];

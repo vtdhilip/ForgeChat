@@ -69,16 +69,21 @@ def status_for_stage_type(stage_type: str) -> str:
         return "lost"
     return "open"
 
-async def sync_contact_assignment(wa_number: Optional[str], contact_number: Optional[str], assignee_id: Optional[int]):
+async def sync_contact_assignment(wa_number: Optional[str], contact_number: Optional[str], assignee_id: Optional[int], org_id: Optional[str] = None):
     if not wa_number or not contact_number or not assignee_id:
         return
+    params: List[Any] = [assignee_id, wa_number, contact_number]
+    where_org = ""
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND org_id = ${len(params)}::uuid"
     await db.execute(
-        """
+        f"""
         UPDATE coexistence.contacts
         SET assigned_user_id = $1, updated_at = NOW()
-        WHERE wa_number = $2 AND contact_number = $3
+        WHERE wa_number = $2 AND contact_number = $3 {where_org}
         """,
-        assignee_id, wa_number, contact_number
+        *params
     )
 
 async def get_stage_in_pipeline(stage_id: int, pipeline_id: int):
@@ -139,29 +144,49 @@ class DealMove(BaseModel):
 # --- Pipelines Routes ---
 
 @router.get("/pipelines")
-async def list_pipelines(user: dict = Depends(get_current_user)):
-    pipes = await db.fetch("SELECT * FROM coexistence.pipelines ORDER BY is_default DESC, position ASC, id ASC")
-    stages = await db.fetch("SELECT * FROM coexistence.pipeline_stages ORDER BY position ASC, id ASC")
+async def list_pipelines(tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx["org_id"]
+    pipes = await db.fetch(
+        "SELECT * FROM coexistence.pipelines WHERE org_id = $1::uuid ORDER BY is_default DESC, position ASC, id ASC",
+        org_id
+    )
+    stages = await db.fetch(
+        """
+        SELECT s.* FROM coexistence.pipeline_stages s
+        JOIN coexistence.pipelines p ON p.id = s.pipeline_id
+        WHERE p.org_id = $1::uuid
+        ORDER BY s.position ASC, s.id ASC
+        """,
+        org_id
+    )
     by_pipe = {}
     for s in stages:
         by_pipe.setdefault(s["pipeline_id"], []).append(dict(s))
     return [pipeline_shape(dict(p), by_pipe.get(p["id"], [])) for p in pipes]
 
 @router.post("/pipelines", status_code=201)
-async def create_pipeline(payload: PipelineCreate, admin: dict = Depends(require_permission("pipelines"))):
+async def create_pipeline(
+    payload: PipelineCreate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Pipeline name is required")
 
+    org_id = tenant_ctx["org_id"]
     async with db.pool.acquire() as conn:
         async with conn.transaction():
-            pos_row = await conn.fetchrow("SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM coexistence.pipelines")
+            pos_row = await conn.fetchrow(
+                "SELECT COALESCE(MAX(position), -1) + 1 AS pos FROM coexistence.pipelines WHERE org_id = $1::uuid",
+                org_id
+            )
             pipe = await conn.fetchrow(
                 """
-                INSERT INTO coexistence.pipelines (name, is_default, position, created_by)
-                VALUES ($1, FALSE, $2, $3) RETURNING *
+                INSERT INTO coexistence.pipelines (name, is_default, position, created_by, org_id)
+                VALUES ($1, FALSE, $2, $3, $4::uuid) RETURNING *
                 """,
-                name, pos_row["pos"], admin["id"]
+                name, pos_row["pos"], admin["id"], org_id
             )
             for idx, s in enumerate(DEFAULT_STAGES):
                 await conn.execute(
@@ -180,24 +205,35 @@ async def create_pipeline(payload: PipelineCreate, admin: dict = Depends(require
     return pipeline_shape(dict(pipe), [dict(s) for s in stages])
 
 @router.put("/pipelines/{pipeline_id}")
-async def update_pipeline(pipeline_id: int, payload: PipelineUpdate, admin: dict = Depends(require_permission("pipelines"))):
+async def update_pipeline(
+    pipeline_id: int,
+    payload: PipelineUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Pipeline name is required")
+    org_id = tenant_ctx["org_id"]
     row = await db.fetchrow(
-        "UPDATE coexistence.pipelines SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
-        name, pipeline_id
+        "UPDATE coexistence.pipelines SET name = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3::uuid RETURNING *",
+        name, pipeline_id, org_id
     )
     if not row:
         raise HTTPException(status_code=404, detail="Pipeline not found")
     return pipeline_shape(dict(row))
 
 @router.delete("/pipelines/{pipeline_id}")
-async def delete_pipeline(pipeline_id: int, admin: dict = Depends(require_permission("pipelines"))):
-    cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.pipelines")
+async def delete_pipeline(
+    pipeline_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
+    org_id = tenant_ctx["org_id"]
+    cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.pipelines WHERE org_id = $1::uuid", org_id)
     if cnt and cnt <= 1:
         raise HTTPException(status_code=409, detail="Cannot delete the only pipeline. Create another first.")
-    res = await db.execute("DELETE FROM coexistence.pipelines WHERE id = $1", pipeline_id)
+    res = await db.execute("DELETE FROM coexistence.pipelines WHERE id = $1 AND org_id = $2::uuid", pipeline_id, org_id)
     if res.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Pipeline not found")
     await audit_log(actor=admin, action="pipeline.delete", target_type="pipeline", target_id=str(pipeline_id))
@@ -206,11 +242,17 @@ async def delete_pipeline(pipeline_id: int, admin: dict = Depends(require_permis
 # --- Stages Routes ---
 
 @router.post("/pipelines/{pipeline_id}/stages", status_code=201)
-async def add_stage(pipeline_id: int, payload: StageCreate, admin: dict = Depends(require_permission("pipelines"))):
+async def add_stage(
+    pipeline_id: int,
+    payload: StageCreate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Stage name is required")
-    pipe = await db.fetchrow("SELECT 1 FROM coexistence.pipelines WHERE id = $1", pipeline_id)
+    org_id = tenant_ctx["org_id"]
+    pipe = await db.fetchrow("SELECT 1 FROM coexistence.pipelines WHERE id = $1 AND org_id = $2::uuid", pipeline_id, org_id)
     if not pipe:
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
@@ -228,7 +270,20 @@ async def add_stage(pipeline_id: int, payload: StageCreate, admin: dict = Depend
     return stage_shape(dict(row))
 
 @router.put("/stages/{stage_id}")
-async def update_stage(stage_id: int, payload: StageUpdate, admin: dict = Depends(require_permission("pipelines"))):
+async def update_stage(
+    stage_id: int,
+    payload: StageUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
+    org_id = tenant_ctx["org_id"]
+    stage_check = await db.fetchrow(
+        "SELECT s.id FROM coexistence.pipeline_stages s JOIN coexistence.pipelines p ON p.id = s.pipeline_id WHERE s.id = $1 AND p.org_id = $2::uuid",
+        stage_id, org_id
+    )
+    if not stage_check:
+        raise HTTPException(status_code=404, detail="Stage not found")
+
     sets = ["updated_at = NOW()"]
     params = [stage_id]
     if payload.name is not None:
@@ -254,7 +309,19 @@ async def update_stage(stage_id: int, payload: StageUpdate, admin: dict = Depend
     return stage_shape(dict(row))
 
 @router.delete("/stages/{stage_id}")
-async def delete_stage(stage_id: int, admin: dict = Depends(require_permission("pipelines"))):
+async def delete_stage(
+    stage_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
+    org_id = tenant_ctx["org_id"]
+    stage_check = await db.fetchrow(
+        "SELECT s.id FROM coexistence.pipeline_stages s JOIN coexistence.pipelines p ON p.id = s.pipeline_id WHERE s.id = $1 AND p.org_id = $2::uuid",
+        stage_id, org_id
+    )
+    if not stage_check:
+        raise HTTPException(status_code=404, detail="Stage not found")
+
     deal_cnt = await db.fetchval("SELECT COUNT(*)::int FROM coexistence.deals WHERE stage_id = $1", stage_id)
     if deal_cnt and deal_cnt > 0:
         raise HTTPException(status_code=409, detail="Move or delete the deals in this stage first.")
@@ -266,30 +333,42 @@ async def delete_stage(stage_id: int, admin: dict = Depends(require_permission("
 # --- Deals Routes ---
 
 @router.get("/deals/contact-search")
-async def contact_search(q: Optional[str] = "", admin: dict = Depends(require_permission("pipelines"))):
+async def contact_search(
+    q: Optional[str] = "",
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
     query_str = (q or "").strip()
     if not query_str:
         return []
+    org_id = tenant_ctx["org_id"]
     like = f"%{query_str}%"
     digits = "".join(filter(str.isdigit, query_str))
     rows = await db.fetch(
         """
-        SELECT wa_number, contact_number, COALESCE(name, profile_name) AS name
-        FROM coexistence.contacts
-        WHERE COALESCE(name, '') ILIKE $1
-           OR COALESCE(profile_name, '') ILIKE $1
-           OR ($2 <> '' AND contact_number ILIKE $3)
-        ORDER BY COALESCE(name, profile_name) NULLS LAST
+        SELECT c.wa_number, c.contact_number, COALESCE(c.name, c.profile_name) AS name
+        FROM coexistence.contacts c
+        JOIN coexistence.whatsapp_accounts wa ON regexp_replace(wa.display_phone_number, '\\D', '', 'g') = c.wa_number
+        WHERE wa.org_id = $4::uuid
+          AND (COALESCE(c.name, '') ILIKE $1
+           OR COALESCE(c.profile_name, '') ILIKE $1
+           OR ($2 <> '' AND c.contact_number ILIKE $3))
+        ORDER BY COALESCE(c.name, c.profile_name) NULLS LAST
         LIMIT 15
         """,
-        like, digits, f"%{digits}%"
+        like, digits, f"%{digits}%", org_id
     )
     return [{"waNumber": r["wa_number"], "contactNumber": r["contact_number"], "name": r["name"]} for r in rows]
 
 @router.get("/deals/metrics")
 async def get_deal_metrics(pipelineId: int = Query(...), tenant_ctx: dict = Depends(get_tenant_context)):
     user = tenant_ctx["user"]
-    params = [pipelineId]
+    org_id = tenant_ctx["org_id"]
+    pipe = await db.fetchrow("SELECT 1 FROM coexistence.pipelines WHERE id = $1 AND org_id = $2::uuid", pipelineId, org_id)
+    if not pipe:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    params = [pipelineId, org_id]
     scope = ""
     if not is_tenant_admin(user, tenant_ctx):
         params.append(user["id"])
@@ -305,7 +384,7 @@ async def get_deal_metrics(pipelineId: int = Query(...), tenant_ctx: dict = Depe
          COUNT(*) FILTER (WHERE d.status='lost' AND d.lost_at >= date_trunc('month', NOW())) AS lost_this_month
        FROM coexistence.deals d
        JOIN coexistence.pipeline_stages s ON s.id = d.stage_id
-       WHERE d.pipeline_id = $1 {scope}
+       WHERE d.pipeline_id = $1 AND d.org_id = $2::uuid {scope}
     """
     row = await db.fetchrow(query, *params)
     return {
@@ -320,7 +399,12 @@ async def get_deal_metrics(pipelineId: int = Query(...), tenant_ctx: dict = Depe
 @router.get("/deals")
 async def list_deals(pipelineId: int = Query(...), tenant_ctx: dict = Depends(get_tenant_context)):
     user = tenant_ctx["user"]
-    params = [pipelineId]
+    org_id = tenant_ctx["org_id"]
+    pipe = await db.fetchrow("SELECT 1 FROM coexistence.pipelines WHERE id = $1 AND org_id = $2::uuid", pipelineId, org_id)
+    if not pipe:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    params = [pipelineId, org_id]
     scope = ""
     if not is_tenant_admin(user, tenant_ctx):
         params.append(user["id"])
@@ -330,17 +414,26 @@ async def list_deals(pipelineId: int = Query(...), tenant_ctx: dict = Depends(ge
       SELECT d.*, COALESCE(u.display_name, u.username) AS assigned_user_name
       FROM coexistence.deals d
       LEFT JOIN coexistence.forgecrm_users u ON u.id = d.assigned_user_id
-      WHERE d.pipeline_id = $1 {scope}
+      WHERE d.pipeline_id = $1 AND d.org_id = $2::uuid {scope}
       ORDER BY d.position ASC, d.created_at ASC
     """
     rows = await db.fetch(query, *params)
     return [deal_shape(dict(r)) for r in rows]
 
 @router.post("/deals", status_code=201)
-async def create_deal(payload: DealCreate, admin: dict = Depends(require_permission("pipelines"))):
+async def create_deal(
+    payload: DealCreate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
     title = payload.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Deal title is required")
+
+    org_id = tenant_ctx["org_id"]
+    pipe = await db.fetchrow("SELECT 1 FROM coexistence.pipelines WHERE id = $1 AND org_id = $2::uuid", payload.pipelineId, org_id)
+    if not pipe:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
 
     stage = None
     if payload.stageId:
@@ -359,10 +452,18 @@ async def create_deal(payload: DealCreate, admin: dict = Depends(require_permiss
     contact_wa = "".join(filter(str.isdigit, payload.contactWaNumber or "")) or None
     contact_num = "".join(filter(str.isdigit, payload.contactNumber or "")) or None
 
+    if contact_wa:
+        wa_check = await db.fetchrow(
+            "SELECT id FROM coexistence.whatsapp_accounts WHERE regexp_replace(display_phone_number, '\\D', '', 'g') = $1 AND org_id = $2::uuid",
+            contact_wa, org_id
+        )
+        if not wa_check:
+            raise HTTPException(status_code=403, detail="WhatsApp account does not belong to your organization")
+
     if not assigned_user_id and contact_wa and contact_num:
         assigned_user_id = await db.fetchval(
-            "SELECT assigned_user_id FROM coexistence.contacts WHERE wa_number = $1 AND contact_number = $2",
-            contact_wa, contact_num
+            "SELECT assigned_user_id FROM coexistence.contacts WHERE wa_number = $1 AND contact_number = $2 AND org_id = $3::uuid",
+            contact_wa, contact_num, org_id
         )
 
     stype = stage["stage_type"]
@@ -381,24 +482,30 @@ async def create_deal(payload: DealCreate, admin: dict = Depends(require_permiss
         INSERT INTO coexistence.deals
           (pipeline_id, stage_id, title, value, currency, status, assigned_user_id,
            contact_wa_number, contact_number, contact_name, expected_close_date, notes,
-           position, won_at, lost_at, created_by)
+           position, won_at, lost_at, created_by, org_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
-                {'NOW()' if status_str == 'won' else 'NULL'}, {'NOW()' if status_str == 'lost' else 'NULL'}, $14)
+                {'NOW()' if status_str == 'won' else 'NULL'}, {'NOW()' if status_str == 'lost' else 'NULL'}, $14, $15::uuid)
         RETURNING *
         """,
         payload.pipelineId, stage["id"], title,
         payload.value or 0.0, (payload.currency or "INR").strip(), status_str, assigned_user_id,
         contact_wa, contact_num, payload.contactName,
         close_dt, payload.notes,
-        pos, admin["id"]
+        pos, admin["id"], org_id
     )
     created = dict(row)
-    await sync_contact_assignment(created.get("contact_wa_number"), created.get("contact_number"), created.get("assigned_user_id"))
+    await sync_contact_assignment(created.get("contact_wa_number"), created.get("contact_number"), created.get("assigned_user_id"), org_id)
     return deal_shape(created)
 
 @router.put("/deals/{deal_id}")
-async def update_deal(deal_id: int, payload: DealUpdate, admin: dict = Depends(require_permission("pipelines"))):
-    ex = await db.fetchrow("SELECT * FROM coexistence.deals WHERE id = $1", deal_id)
+async def update_deal(
+    deal_id: int,
+    payload: DealUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
+    org_id = tenant_ctx["org_id"]
+    ex = await db.fetchrow("SELECT * FROM coexistence.deals WHERE id = $1 AND org_id = $2::uuid", deal_id, org_id)
     if not ex:
         raise HTTPException(status_code=404, detail="Deal not found")
 
@@ -412,7 +519,7 @@ async def update_deal(deal_id: int, payload: DealUpdate, admin: dict = Depends(r
         status_str = status_for_stage_type(stage["stage_type"])
 
     sets = ["updated_at = NOW()"]
-    params = [deal_id]
+    params = [deal_id, org_id]
 
     if payload.title is not None:
         params.append(payload.title.strip())
@@ -460,19 +567,20 @@ async def update_deal(deal_id: int, payload: DealUpdate, admin: dict = Depends(r
     sets.append(f"won_at = {won_expr}")
     sets.append(f"lost_at = {lost_expr}")
 
-    query = f"UPDATE coexistence.deals SET {', '.join(sets)} WHERE id = $1 RETURNING *"
+    query = f"UPDATE coexistence.deals SET {', '.join(sets)} WHERE id = $1 AND org_id = $2::uuid RETURNING *"
     updated_row = await db.fetchrow(query, *params)
     updated = dict(updated_row)
 
     if payload.assignedUserId is not None:
-        await sync_contact_assignment(updated.get("contact_wa_number"), updated.get("contact_number"), updated.get("assigned_user_id"))
+        await sync_contact_assignment(updated.get("contact_wa_number"), updated.get("contact_number"), updated.get("assigned_user_id"), org_id)
 
     return deal_shape(updated)
 
 @router.post("/deals/{deal_id}/move")
 async def move_deal(deal_id: int, payload: DealMove, tenant_ctx: dict = Depends(get_tenant_context)):
     user = tenant_ctx["user"]
-    ex = await db.fetchrow("SELECT * FROM coexistence.deals WHERE id = $1", deal_id)
+    org_id = tenant_ctx["org_id"]
+    ex = await db.fetchrow("SELECT * FROM coexistence.deals WHERE id = $1 AND org_id = $2::uuid", deal_id, org_id)
     if not ex:
         raise HTTPException(status_code=404, detail="Deal not found")
 
@@ -492,14 +600,19 @@ async def move_deal(deal_id: int, payload: DealMove, tenant_ctx: dict = Depends(
       UPDATE coexistence.deals
       SET stage_id = $1, status = $2, position = $3, updated_at = NOW(),
           won_at = {won_expr}, lost_at = {lost_expr}
-      WHERE id = $4 RETURNING *
+      WHERE id = $4 AND org_id = $5::uuid RETURNING *
     """
-    row = await db.fetchrow(query, stage["id"], status_str, pos, deal_id)
+    row = await db.fetchrow(query, stage["id"], status_str, pos, deal_id, org_id)
     return deal_shape(dict(row))
 
 @router.delete("/deals/{deal_id}")
-async def delete_deal(deal_id: int, admin: dict = Depends(require_permission("pipelines"))):
-    res = await db.execute("DELETE FROM coexistence.deals WHERE id = $1", deal_id)
+async def delete_deal(
+    deal_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    admin: dict = Depends(require_permission("pipelines"))
+):
+    org_id = tenant_ctx["org_id"]
+    res = await db.execute("DELETE FROM coexistence.deals WHERE id = $1 AND org_id = $2::uuid", deal_id, org_id)
     if res.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Deal not found")
     await audit_log(actor=admin, action="deal.delete", target_type="deal", target_id=str(deal_id))

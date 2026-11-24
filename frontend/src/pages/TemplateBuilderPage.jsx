@@ -75,6 +75,7 @@ const HEADER_TYPES = [
 const STATUSES = {
   DRAFT: { color: B.t6, bg: '#EEEDE8', dot: '#aaa', label: 'DRAFT' },
   SUBMITTED: { color: B.accentDark, bg: B.accentBg, dot: B.accent, label: 'PENDING REVIEW' },
+  PENDING: { color: B.accentDark, bg: B.accentBg, dot: B.accent, label: 'PENDING REVIEW' },
   APPROVED: { color: B.green, bg: B.greenBg, dot: B.greenBright, label: 'APPROVED' },
   REJECTED: { color: B.red, bg: B.redBg, dot: B.red, label: 'REJECTED' },
   PAUSED: { color: '#E65100', bg: '#FFF3E0', dot: '#E65100', label: 'PAUSED' },
@@ -469,7 +470,9 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
     if (accountFilter !== 'all') {
       list = list.filter(t => matchesAccount(t, accountFilter));
     }
-    if (statusFilter !== 'all') list = list.filter(t => t.status === statusFilter);
+    if (statusFilter !== 'all') {
+      list = list.filter(t => (t.status === 'PENDING' ? 'SUBMITTED' : t.status) === statusFilter);
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(t =>
@@ -510,7 +513,10 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
       list = list.filter(t => matchesAccount(t, accountFilter));
     }
     c.all = list.length;
-    list.forEach(t => { if (c[t.status] != null) c[t.status]++; });
+    list.forEach(t => {
+      const s = t.status === 'PENDING' ? 'SUBMITTED' : t.status;
+      if (c[s] != null) c[s]++;
+    });
     return c;
   }, [templates, accountFilter]);
 
@@ -1067,7 +1073,7 @@ function BuilderView({ template, onBack, onSave, readOnly, accounts }) {
         )}
 
         {/* Status banners */}
-        {status === 'SUBMITTED' && templateId && (
+        {(status === 'SUBMITTED' || status === 'PENDING') && templateId && (
           <div style={{ background: B.greenBg, border: `1px solid ${B.greenBright}44`, borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <span style={{ fontSize: 18 }}>🎉</span>
@@ -1146,7 +1152,7 @@ function BuilderView({ template, onBack, onSave, readOnly, accounts }) {
                     }))]}
                     placeholder="— Unassigned —"
                     searchPlaceholder="Search accounts…"
-                    disabled={readOnly || (isEdit && (status === 'SUBMITTED' || status === 'APPROVED'))}
+                    disabled={readOnly || (isEdit && (status === 'SUBMITTED' || status === 'PENDING' || status === 'APPROVED'))}
                   />
                 ) : accounts && accounts.length === 1 ? (
                   // Single-account system: the connected account is used automatically.

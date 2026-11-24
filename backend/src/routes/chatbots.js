@@ -28,7 +28,7 @@ router.get('/chatbots', async (req, res) => {
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `WHERE (org_id = $${params.length} OR org_id IS NULL)`;
+      orgClause = `WHERE org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `SELECT id, name, description, status, trigger_type, config, created_at, updated_at
@@ -66,7 +66,7 @@ router.get('/chatbots/:id', async (req, res) => {
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      orgClause = `AND org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `SELECT id, name, description, status, trigger_type, config, created_at, updated_at
@@ -112,7 +112,7 @@ router.put('/chatbots/:id', requirePermission('chatbot-builder'), async (req, re
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      orgClause = `AND org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `UPDATE coexistence.chatbots SET
@@ -142,7 +142,7 @@ router.post('/chatbots/:id/duplicate', requirePermission('chatbot-builder'), asy
     let orgClause = '';
     if (req.orgId) {
       checkParams.push(req.orgId);
-      orgClause = `AND (org_id = $${checkParams.length} OR org_id IS NULL)`;
+      orgClause = `AND org_id = $${checkParams.length}`;
     }
     const { rows: src } = await pool.query(
       `SELECT name, description, trigger_type, config FROM coexistence.chatbots WHERE id = $1 ${orgClause}`,
@@ -170,7 +170,7 @@ router.get('/chatbots/:id/export', requirePermission('chatbot-builder'), async (
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      orgClause = `AND org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `SELECT name, description, trigger_type, config FROM coexistence.chatbots WHERE id = $1 ${orgClause}`,
@@ -218,7 +218,7 @@ router.delete('/chatbots/:id', requirePermission('chatbot-builder'), async (req,
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      orgClause = `AND org_id = $${params.length}`;
     }
     const { rowCount } = await pool.query(
       `DELETE FROM coexistence.chatbots WHERE id = $1 ${orgClause}`, params

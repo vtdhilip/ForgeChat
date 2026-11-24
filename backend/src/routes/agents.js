@@ -201,7 +201,7 @@ router.get('/agents', async (req, res) => {
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `WHERE (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+      orgClause = `WHERE a.org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `SELECT a.*,
@@ -232,7 +232,7 @@ router.get('/agents/:id', async (req, res) => {
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `AND (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+      orgClause = `AND a.org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `SELECT a.*, am.provider AS ai_provider, am.label AS ai_label
@@ -336,7 +336,7 @@ router.put('/agents/:id', adminOnly, async (req, res) => {
     let orgCheckClause = '';
     if (req.orgId) {
       checkParams.push(req.orgId);
-      orgCheckClause = `AND (org_id = $${checkParams.length} OR org_id IS NULL)`;
+      orgCheckClause = `AND org_id = $${checkParams.length}`;
     }
     const { rows: existing } = await pool.query(
       `SELECT * FROM coexistence.agents WHERE id = $1 ${orgCheckClause}`,
@@ -425,7 +425,7 @@ router.delete('/agents/:id', adminOnly, async (req, res) => {
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      orgClause = `AND org_id = $${params.length}`;
     }
     const { rowCount } = await pool.query(
       `DELETE FROM coexistence.agents WHERE id = $1 ${orgClause}`,
@@ -471,7 +471,7 @@ router.get('/agents/:id/export', adminOnly, async (req, res) => {
     let orgClause = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgClause = `AND (a.org_id = $${params.length} OR a.org_id IS NULL)`;
+      orgClause = `AND a.org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `SELECT a.*, am.provider AS ai_provider, am.label AS ai_label
@@ -601,7 +601,7 @@ async function ensureAgentAccess(agentId, orgId) {
   let orgClause = '';
   if (orgId) {
     params.push(orgId);
-    orgClause = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+    orgClause = `AND org_id = $${params.length}`;
   }
   const { rows } = await pool.query(
     `SELECT id FROM coexistence.agents WHERE id = $1 ${orgClause}`,

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from app.core.database import db
 from app.middleware.auth import get_current_user, assert_contact_access
+from app.middleware.tenant import get_tenant_context
 
 router = APIRouter(prefix="/api/media", tags=["Media"])
 
@@ -24,7 +25,7 @@ async def get_media(
     message_id: str,
     request: Request,
     download: Optional[str] = None,
-    user: dict = Depends(get_current_user)
+    tenant_ctx: dict = Depends(get_tenant_context)
 ):
     row = await db.fetchrow(
         """
@@ -38,7 +39,7 @@ async def get_media(
     if not row:
         raise HTTPException(status_code=404, detail="Message not found")
 
-    await assert_contact_access(user, row["wa_number"], row["contact_number"])
+    await assert_contact_access(tenant_ctx["user"], row["wa_number"], row["contact_number"], tenant_ctx)
 
     if row["media_status"] != "stored" or not row["media_storage_path"]:
         raise HTTPException(status_code=404, detail="Media not available")
@@ -97,7 +98,7 @@ async def get_media(
     return FileResponse(safe_path, media_type=mime, headers=headers)
 
 @router.post("/{message_id}/retry")
-async def retry_media(message_id: str, user: dict = Depends(get_current_user)):
+async def retry_media(message_id: str, tenant_ctx: dict = Depends(get_tenant_context)):
     row = await db.fetchrow(
         "SELECT wa_number, contact_number FROM coexistence.chat_history WHERE message_id = $1",
         message_id
@@ -105,5 +106,5 @@ async def retry_media(message_id: str, user: dict = Depends(get_current_user)):
     if not row:
         raise HTTPException(status_code=404, detail="Message not found")
 
-    await assert_contact_access(user, row["wa_number"], row["contact_number"])
+    await assert_contact_access(tenant_ctx["user"], row["wa_number"], row["contact_number"], tenant_ctx)
     return {"ok": True, "message": "Retry queued"}

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.core.database import db
 from app.middleware.auth import get_current_user, require_permission
+from app.middleware.tenant import get_tenant_context
 from app.services.whatsapp_service import normalize_phone
 from app.services.message_sender import (
     resolve_account,
@@ -17,31 +18,43 @@ from app.routers.media_library import sync_media_to_account
 
 router = APIRouter(prefix="/api/broadcasts", tags=["Broadcasts"])
 
-async def load_contact_context(numbers: List[str]) -> Dict[str, dict]:
+async def load_contact_context(numbers: List[str], org_id: Optional[str] = None) -> Dict[str, dict]:
     cleaned = list({normalize_phone(n) for n in numbers if normalize_phone(n)})
     if not cleaned:
         return {}
+    params: List[Any] = [cleaned]
+    where_org = ""
+    if org_id:
+        params.append(org_id)
+        where_org = f"AND org_id = ${len(params)}::uuid"
     rows = await db.fetch(
-        """
+        f"""
         SELECT regexp_replace(contact_number, '\\D', '', 'g') AS num, name, custom_fields, tags
         FROM coexistence.contacts
         WHERE regexp_replace(contact_number, '\\D', '', 'g') = ANY($1::text[])
+          {where_org}
         """,
-        cleaned
+        *params
     )
     return {r["num"]: dict(r) for r in rows}
 
-async def get_broadcast_with_logs(broadcast_id: int) -> Optional[dict]:
+async def get_broadcast_with_logs(broadcast_id: int, org_id: Optional[str] = None) -> Optional[dict]:
+    where = "WHERE b.id = $1"
+    params = [broadcast_id]
+    if org_id:
+        params.append(org_id)
+        where += f" AND b.org_id = ${len(params)}::uuid"
+
     b_rows = await db.fetch(
-        """
+        f"""
         SELECT b.*, t.name AS template_name,
                (SELECT COUNT(*) FROM coexistence.broadcast_logs WHERE broadcast_id = b.id) AS log_count,
                (SELECT MAX(sent_at) FROM coexistence.broadcast_logs WHERE broadcast_id = b.id) AS last_activity
         FROM coexistence.broadcasts b
         LEFT JOIN coexistence.message_templates t ON t.id = b.template_id
-        WHERE b.id = $1
+        {where}
         """,
-        broadcast_id
+        *params
     )
     if not b_rows:
         return None
@@ -130,8 +143,12 @@ class BroadcastTestRequest(BaseModel):
     test_number: str
 
 @router.get("")
-async def list_broadcasts(status: Optional[str] = None, user: dict = Depends(get_current_user)):
-    params = []
+async def list_broadcasts(
+    status: Optional[str] = None,
+    tenant_ctx: dict = Depends(get_tenant_context)
+):
+    org_id = tenant_ctx["org_id"]
+    params = [org_id]
     status_filter = ""
     if status and status != "all":
         params.append(status)
@@ -159,6 +176,7 @@ async def list_broadcasts(status: Optional[str] = None, user: dict = Depends(get
                 ) AS display_status
          FROM coexistence.broadcasts b
          LEFT JOIN coexistence.message_templates t ON t.id = b.template_id
+         WHERE b.org_id = $1::uuid
        )
        SELECT * FROM base
        {status_filter}
@@ -179,14 +197,21 @@ async def list_broadcasts(status: Optional[str] = None, user: dict = Depends(get
     return out
 
 @router.get("/{broadcast_id}")
-async def get_broadcast(broadcast_id: int, user: dict = Depends(get_current_user)):
-    data = await get_broadcast_with_logs(broadcast_id)
+async def get_broadcast(
+    broadcast_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context)
+):
+    data = await get_broadcast_with_logs(broadcast_id, tenant_ctx["org_id"])
     if not data:
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return data
 
 @router.post("", status_code=201)
-async def create_broadcast(payload: BroadcastCreate, user: dict = Depends(require_permission("bulk-message"))):
+async def create_broadcast(
+    payload: BroadcastCreate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("bulk-message"))
+):
     if not payload.from_number or not payload.recipient_numbers:
         raise HTTPException(status_code=400, detail="from_number and recipient_numbers required")
     if len(payload.recipient_numbers) > 5000:
@@ -196,14 +221,39 @@ async def create_broadcast(payload: BroadcastCreate, user: dict = Depends(requir
     if msg_type == "template" and not payload.template_id:
         raise HTTPException(status_code=400, detail="template_id required for template broadcasts")
 
+    org_id = tenant_ctx["org_id"]
+    clean_from = "".join(filter(str.isdigit, payload.from_number))
+    wa_check = await db.fetchrow(
+        "SELECT id FROM coexistence.whatsapp_accounts WHERE regexp_replace(display_phone_number, '\\D', '', 'g') = $1 AND org_id = $2::uuid",
+        clean_from, org_id
+    )
+    if not wa_check:
+        raise HTTPException(status_code=403, detail="From WhatsApp number does not belong to your organization")
+
+    if payload.template_id:
+        tpl_check = await db.fetchrow(
+            "SELECT id FROM coexistence.message_templates WHERE id = $1 AND org_id = $2::uuid",
+            payload.template_id, org_id
+        )
+        if not tpl_check:
+            raise HTTPException(status_code=403, detail="Template does not belong to your organization")
+
+    if payload.media_library_id:
+        med_check = await db.fetchrow(
+            "SELECT id FROM coexistence.media_library WHERE id = $1 AND org_id = $2::uuid AND deleted_at IS NULL",
+            payload.media_library_id, org_id
+        )
+        if not med_check:
+            raise HTTPException(status_code=403, detail="Media does not belong to your organization")
+
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow(
                 """
                 INSERT INTO coexistence.broadcasts
                  (from_number, recipient_numbers, template_id, status, test_number, name,
-                  variable_mapping, message_type, body, url, media_library_id, caption, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+                  variable_mapping, message_type, body, url, media_library_id, caption, org_id, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::uuid, NOW())
                 RETURNING *
                 """,
                 payload.from_number, json.dumps(payload.recipient_numbers),
@@ -211,7 +261,8 @@ async def create_broadcast(payload: BroadcastCreate, user: dict = Depends(requir
                 payload.test_number, payload.name,
                 json.dumps(payload.variable_mapping or {}),
                 msg_type, payload.body, payload.url,
-                payload.media_library_id, payload.caption
+                payload.media_library_id, payload.caption,
+                org_id
             )
             broadcast = dict(row)
             if payload.test_number:
@@ -230,12 +281,43 @@ async def create_broadcast(payload: BroadcastCreate, user: dict = Depends(requir
     return broadcast
 
 @router.put("/{broadcast_id}")
-async def update_broadcast(broadcast_id: int, payload: BroadcastUpdate, user: dict = Depends(require_permission("bulk-message"))):
-    ex = await db.fetchrow("SELECT status FROM coexistence.broadcasts WHERE id = $1", broadcast_id)
+async def update_broadcast(
+    broadcast_id: int,
+    payload: BroadcastUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("bulk-message"))
+):
+    org_id = tenant_ctx["org_id"]
+    ex = await db.fetchrow("SELECT status FROM coexistence.broadcasts WHERE id = $1 AND org_id = $2::uuid", broadcast_id, org_id)
     if not ex:
         raise HTTPException(status_code=404, detail="Broadcast not found")
     if ex["status"] != "DRAFT":
         raise HTTPException(status_code=403, detail="Only DRAFT broadcasts can be edited")
+
+    if payload.from_number:
+        clean_from = "".join(filter(str.isdigit, payload.from_number))
+        wa_check = await db.fetchrow(
+            "SELECT id FROM coexistence.whatsapp_accounts WHERE regexp_replace(display_phone_number, '\\D', '', 'g') = $1 AND org_id = $2::uuid",
+            clean_from, org_id
+        )
+        if not wa_check:
+            raise HTTPException(status_code=403, detail="From WhatsApp number does not belong to your organization")
+
+    if payload.template_id:
+        tpl_check = await db.fetchrow(
+            "SELECT id FROM coexistence.message_templates WHERE id = $1 AND org_id = $2::uuid",
+            payload.template_id, org_id
+        )
+        if not tpl_check:
+            raise HTTPException(status_code=403, detail="Template does not belong to your organization")
+
+    if payload.media_library_id:
+        med_check = await db.fetchrow(
+            "SELECT id FROM coexistence.media_library WHERE id = $1 AND org_id = $2::uuid AND deleted_at IS NULL",
+            payload.media_library_id, org_id
+        )
+        if not med_check:
+            raise HTTPException(status_code=403, detail="Media does not belong to your organization")
 
     row = await db.fetchrow(
         """
@@ -252,7 +334,7 @@ async def update_broadcast(broadcast_id: int, payload: BroadcastUpdate, user: di
           media_library_id = COALESCE($10, media_library_id),
           caption = COALESCE($11, caption),
           updated_at = NOW()
-        WHERE id = $12
+        WHERE id = $12 AND org_id = $13::uuid
         RETURNING *
         """,
         payload.from_number,
@@ -266,8 +348,11 @@ async def update_broadcast(broadcast_id: int, payload: BroadcastUpdate, user: di
         payload.url,
         payload.media_library_id,
         payload.caption,
-        broadcast_id
+        broadcast_id,
+        org_id
     )
+    if not row:
+        raise HTTPException(status_code=404, detail="Broadcast not found")
     d = dict(row)
     if d.get("created_at"):
         d["created_at"] = d["created_at"].isoformat()
@@ -276,29 +361,39 @@ async def update_broadcast(broadcast_id: int, payload: BroadcastUpdate, user: di
     return d
 
 @router.delete("/{broadcast_id}")
-async def delete_broadcast(broadcast_id: int, user: dict = Depends(require_permission("bulk-message"))):
-    res = await db.execute("DELETE FROM coexistence.broadcasts WHERE id = $1", broadcast_id)
+async def delete_broadcast(
+    broadcast_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("bulk-message"))
+):
+    org_id = tenant_ctx["org_id"]
+    res = await db.execute("DELETE FROM coexistence.broadcasts WHERE id = $1 AND org_id = $2::uuid", broadcast_id, org_id)
     if res.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return {"ok": True}
 
 @router.post("/{broadcast_id}/send")
-async def send_broadcast(broadcast_id: int, user: dict = Depends(require_permission("bulk-message"))):
+async def send_broadcast(
+    broadcast_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("bulk-message"))
+):
+    org_id = tenant_ctx["org_id"]
     query = """
       SELECT b.*, t.id AS t_id, t.name AS t_name, t.language AS t_language, t.body AS t_body,
              t.header_type AS t_header_type, t.header_text AS t_header_text, t.footer AS t_footer,
              t.buttons AS t_buttons, t.samples AS t_samples,
              t.header_media_library_id AS t_header_media_library_id
       FROM coexistence.broadcasts b
-      LEFT JOIN coexistence.message_templates t ON t.id = b.template_id
-      WHERE b.id = $1
+      LEFT JOIN coexistence.message_templates t ON t.id = b.template_id AND t.org_id = b.org_id
+      WHERE b.id = $1 AND b.org_id = $2::uuid
     """
-    b_row = await db.fetchrow(query, broadcast_id)
+    b_row = await db.fetchrow(query, broadcast_id, org_id)
     if not b_row:
         raise HTTPException(status_code=404, detail="Broadcast not found")
     b = dict(b_row)
 
-    acc, err = await resolve_account(from_phone_number=b["from_number"])
+    acc, err = await resolve_account(from_phone_number=b["from_number"], org_id=org_id)
     if err or not acc:
         raise HTTPException(status_code=400, detail=err or "Account not found")
 
@@ -328,7 +423,8 @@ async def send_broadcast(broadcast_id: int, user: dict = Depends(require_permiss
         }
 
     contact_ctx = await load_contact_context(
-        [r if isinstance(r, str) else r.get("contact_number") for r in recipients]
+        [r if isinstance(r, str) else r.get("contact_number") for r in recipients],
+        org_id=org_id
     )
 
     resolved_media_id = None
@@ -338,7 +434,7 @@ async def send_broadcast(broadcast_id: int, user: dict = Depends(require_permiss
 
     if (b.get("message_type") in ("image", "video", "audio", "document") or needs_header_media) and media_source_id:
         try:
-            sync = await sync_media_to_account(media_source_id, acc["id"])
+            sync = await sync_media_to_account(media_source_id, acc["id"], org_id=org_id)
             resolved_media_id = sync.get("metaMediaId")
         except Exception as e:
             print(f"[broadcasts] Media sync failed: {e}")
@@ -426,6 +522,6 @@ async def send_broadcast(broadcast_id: int, user: dict = Depends(require_permiss
                 str(job_err)[:500], log_id
             )
 
-    await db.execute("UPDATE coexistence.broadcasts SET status = 'SENT', updated_at = NOW() WHERE id = $1", broadcast_id)
-    data = await get_broadcast_with_logs(broadcast_id)
+    await db.execute("UPDATE coexistence.broadcasts SET status = 'SENT', updated_at = NOW() WHERE id = $1 AND org_id = $2::uuid", broadcast_id, org_id)
+    data = await get_broadcast_with_logs(broadcast_id, org_id)
     return {**data, "enqueued": enqueued}

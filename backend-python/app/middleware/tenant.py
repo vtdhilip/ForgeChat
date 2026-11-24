@@ -1,3 +1,4 @@
+import json
 from fastapi import Request, HTTPException, status, Depends
 from typing import Dict, Any, Callable, Optional
 from app.core.database import db
@@ -99,12 +100,23 @@ async def get_tenant_context(
     org_id_str = str(org_data["id"])
     member_role = org_data.get("member_role", "viewer")
     
+    raw_settings = org_data.get("settings") or {}
+    if isinstance(raw_settings, str):
+        try:
+            raw_settings = json.loads(raw_settings)
+            if isinstance(raw_settings, str):
+                raw_settings = json.loads(raw_settings)
+        except Exception:
+            raw_settings = {}
+    elif not isinstance(raw_settings, dict):
+        raw_settings = {}
+
     org_dict = {
         "id": org_id_str,
         "name": org_data["name"],
         "slug": org_data["slug"],
         "plan": org_data["plan"],
-        "settings": org_data.get("settings") or {},
+        "settings": raw_settings,
         "role": member_role,
     }
 

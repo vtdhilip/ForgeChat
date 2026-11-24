@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from app.core.database import db
 from app.middleware.auth import require_permission, get_current_user, require_admin
+from app.middleware.tenant import get_tenant_context
 from app.services.product_catalog import sync_products_from_shopify
 
 router = APIRouter(prefix="/api", tags=["Categories & Tags"])
@@ -42,52 +43,69 @@ class ShopifySyncRequest(BaseModel):
 # --- Categories ---
 
 @router.get("/categories")
-async def list_categories(user: dict = Depends(get_current_user)):
+async def list_categories(tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx["org_id"]
     rows = await db.fetch(
-        "SELECT id, name, description, created_at, updated_at FROM coexistence.categories ORDER BY name ASC"
+        "SELECT id, name, description, created_at, updated_at FROM coexistence.categories WHERE org_id = $1::uuid ORDER BY name ASC",
+        org_id
     )
     return [dict(r) for r in rows]
 
 @router.post("/categories", status_code=201)
-async def create_category(payload: CategoryCreate, user: dict = Depends(require_permission("admin-settings:category"))):
+async def create_category(
+    payload: CategoryCreate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:category"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
     cat_id = gen_id("cat")
     desc = (payload.description or "").strip()
+    org_id = tenant_ctx["org_id"]
     row = await db.fetchrow(
         """
-        INSERT INTO coexistence.categories (id, name, description)
-        VALUES ($1, $2, $3)
+        INSERT INTO coexistence.categories (id, name, description, org_id)
+        VALUES ($1, $2, $3, $4::uuid)
         RETURNING id, name, description, created_at, updated_at
         """,
-        cat_id, name, desc
+        cat_id, name, desc, org_id
     )
     return dict(row)
 
 @router.put("/categories/{category_id}")
-async def update_category(category_id: str, payload: CategoryUpdate, user: dict = Depends(require_permission("admin-settings:category"))):
+async def update_category(
+    category_id: str,
+    payload: CategoryUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:category"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
     desc = (payload.description or "").strip()
+    org_id = tenant_ctx["org_id"]
     row = await db.fetchrow(
         """
         UPDATE coexistence.categories
         SET name = $1, description = $2, updated_at = NOW()
-        WHERE id = $3
+        WHERE id = $3 AND org_id = $4::uuid
         RETURNING id, name, description, created_at, updated_at
         """,
-        name, desc, category_id
+        name, desc, category_id, org_id
     )
     if not row:
         raise HTTPException(status_code=404, detail="Category not found")
     return dict(row)
 
 @router.delete("/categories/{category_id}")
-async def delete_category(category_id: str, user: dict = Depends(require_permission("admin-settings:category"))):
-    result = await db.execute("DELETE FROM coexistence.categories WHERE id = $1", category_id)
-    # result string is like "DELETE 1" or "DELETE 0"
+async def delete_category(
+    category_id: str,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:category"))
+):
+    org_id = tenant_ctx["org_id"]
+    result = await db.execute("DELETE FROM coexistence.categories WHERE id = $1 AND org_id = $2::uuid", category_id, org_id)
     if result.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Category not found")
     return {"ok": True}
@@ -95,60 +113,91 @@ async def delete_category(category_id: str, user: dict = Depends(require_permiss
 # --- Tags ---
 
 @router.get("/tags")
-async def list_tags(user: dict = Depends(get_current_user)):
+async def list_tags(tenant_ctx: dict = Depends(get_tenant_context)):
+    org_id = tenant_ctx["org_id"]
     rows = await db.fetch(
         """
         SELECT t.id, t.name, t.color, t.category_id, t.created_at, t.updated_at,
                c.name as category_name
         FROM coexistence.tags t
         LEFT JOIN coexistence.categories c ON c.id = t.category_id
+        WHERE t.org_id = $1::uuid
         ORDER BY t.name ASC
-        """
+        """,
+        org_id
     )
     return [dict(r) for r in rows]
 
 @router.post("/tags", status_code=201)
-async def create_tag(payload: TagCreate, user: dict = Depends(require_permission("admin-settings:tags"))):
+async def create_tag(
+    payload: TagCreate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:tags"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
     if not payload.categoryId:
         raise HTTPException(status_code=400, detail="Category is required")
-    
+
+    org_id = tenant_ctx["org_id"]
+    cat_check = await db.fetchrow("SELECT id FROM coexistence.categories WHERE id = $1 AND org_id = $2::uuid", payload.categoryId, org_id)
+    if not cat_check:
+        raise HTTPException(status_code=400, detail="Category not found in your organization")
+
     tag_id = gen_id("tag")
     color = payload.color.strip() if payload.color else "#dc2626"
     row = await db.fetchrow(
         """
-        INSERT INTO coexistence.tags (id, name, color, category_id)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO coexistence.tags (id, name, color, category_id, org_id)
+        VALUES ($1, $2, $3, $4, $5::uuid)
         RETURNING id, name, color, category_id, created_at, updated_at
         """,
-        tag_id, name, color, payload.categoryId
+        tag_id, name, color, payload.categoryId, org_id
     )
     return dict(row)
 
 @router.put("/tags/{tag_id}")
-async def update_tag(tag_id: str, payload: TagUpdate, user: dict = Depends(require_permission("admin-settings:tags"))):
+async def update_tag(
+    tag_id: str,
+    payload: TagUpdate,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:tags"))
+):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
     color = payload.color.strip() if payload.color else "#dc2626"
+    org_id = tenant_ctx["org_id"]
+    if payload.categoryId:
+        cat_check = await db.fetchrow(
+            "SELECT id FROM coexistence.categories WHERE id = $1 AND org_id = $2::uuid",
+            payload.categoryId, org_id
+        )
+        if not cat_check:
+            raise HTTPException(status_code=400, detail="Category not found in your organization")
+
     row = await db.fetchrow(
         """
         UPDATE coexistence.tags
         SET name = $1, color = $2, category_id = $3, updated_at = NOW()
-        WHERE id = $4
+        WHERE id = $4 AND org_id = $5::uuid
         RETURNING id, name, color, category_id, created_at, updated_at
         """,
-        name, color, payload.categoryId, tag_id
+        name, color, payload.categoryId, tag_id, org_id
     )
     if not row:
         raise HTTPException(status_code=404, detail="Tag not found")
     return dict(row)
 
 @router.delete("/tags/{tag_id}")
-async def delete_tag(tag_id: str, user: dict = Depends(require_permission("admin-settings:tags"))):
-    result = await db.execute("DELETE FROM coexistence.tags WHERE id = $1", tag_id)
+async def delete_tag(
+    tag_id: str,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("admin-settings:tags"))
+):
+    org_id = tenant_ctx["org_id"]
+    result = await db.execute("DELETE FROM coexistence.tags WHERE id = $1 AND org_id = $2::uuid", tag_id, org_id)
     if result.endswith(" 0"):
         raise HTTPException(status_code=404, detail="Tag not found")
     return {"ok": True}
@@ -166,7 +215,6 @@ async def sync_shopify_catalog(payload: Optional[ShopifySyncRequest] = None, adm
     if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9\-]*\.myshopify\.com$", clean_domain):
         raise HTTPException(status_code=400, detail="Invalid Shopify domain. Must be a valid subdomain of myshopify.com")
 
-    # If domain differs from configured domain, user must provide custom accessToken; never leak server env token
     if payload and payload.accessToken:
         access_token = payload.accessToken
     elif clean_domain == configured_domain.lower():

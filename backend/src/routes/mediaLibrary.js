@@ -84,7 +84,7 @@ router.get('/media-library', async (req, res) => {
     let accFilter = '';
     if (req.orgId) {
       params.push(req.orgId);
-      accFilter += ` AND (org_id = $${params.length} OR org_id IS NULL)`;
+      accFilter += ` AND org_id = $${params.length}`;
     }
     // Scope to the selected account, but also surface media that has no owner
     // yet (whatsapp_account_id IS NULL) — e.g. uploaded before any account was
@@ -192,7 +192,7 @@ router.put('/media-library/:id', requirePermission('media-library'), async (req,
     if (req.orgId) {
       const orgParamIndex = i++;
       vals.push(req.orgId);
-      orgFilter = `AND (org_id = $${orgParamIndex} OR org_id IS NULL)`;
+      orgFilter = `AND org_id = $${orgParamIndex}`;
     }
     const { rows } = await pool.query(
       `UPDATE coexistence.media_library SET ${fields.join(', ')}
@@ -215,7 +215,7 @@ router.delete('/media-library/:id', requirePermission('media-library'), async (r
     let orgFilter = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgFilter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      orgFilter = `AND org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `UPDATE coexistence.media_library
@@ -241,7 +241,7 @@ router.get('/media-library/:id/download', async (req, res) => {
     let orgFilter = '';
     if (req.orgId) {
       params.push(req.orgId);
-      orgFilter = `AND (org_id = $${params.length} OR org_id IS NULL)`;
+      orgFilter = `AND org_id = $${params.length}`;
     }
     const { rows } = await pool.query(
       `SELECT storage_key, mime_type, original_name, name

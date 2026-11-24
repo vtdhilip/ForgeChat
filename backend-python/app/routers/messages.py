@@ -124,7 +124,7 @@ async def get_numbers(tenant_ctx: dict = Depends(get_tenant_context)):
       LEFT JOIN coexistence.chat_history ch
         ON ch.wa_number = regexp_replace(wa.display_phone_number, '[^0-9]', '', 'g')
        AND ch.timestamp >= NOW() - {DEFAULT_DATA_WINDOW}
-       AND (ch.org_id IS NULL OR ch.org_id = $1::uuid)
+       AND ch.org_id = $1::uuid
       WHERE wa.org_id = $1::uuid
         AND wa.is_active = true
         AND wa.display_phone_number IS NOT NULL
@@ -150,7 +150,7 @@ async def get_numbers(tenant_ctx: dict = Depends(get_tenant_context)):
         ON cr.wa_number = ch.wa_number AND cr.contact_number = ch.contact_number
       {unread_join}
       WHERE ch.direction = 'incoming'
-        AND (ch.org_id IS NULL OR ch.org_id = $1::uuid)
+        AND ch.org_id = $1::uuid
         AND ch.timestamp >= NOW() - {DEFAULT_DATA_WINDOW}
         AND ch.timestamp > COALESCE(cr.last_read_at, 'epoch'::timestamptz)
         {unread_assign}
@@ -181,8 +181,10 @@ async def get_numbers(tenant_ctx: dict = Depends(get_tenant_context)):
                    regexp_replace(phone_number, '[^0-9]', '', 'g') AS norm
             FROM coexistence.team_members
             WHERE regexp_replace(phone_number, '[^0-9]', '', 'g') = ANY($1::text[])
+              AND org_id = $2::uuid
             """,
-            norm_wa
+            norm_wa,
+            org_id
         )
         for r in team_rows:
             if r["norm"] not in team_map:
@@ -315,20 +317,22 @@ async def save_contact(payload: ContactSaveRequest, tenant_ctx: dict = Depends(g
         set_assign = True
         assign_val = int(payload.assignedUserId) if str(payload.assignedUserId).strip() else None
 
+    org_id = tenant_ctx.get("org_id")
     await db.execute(
         """
         INSERT INTO coexistence.contacts
-          (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, updated_at)
-        VALUES ($1, $2, $3, COALESCE($4::jsonb, '[]'::jsonb), COALESCE($5::jsonb, '{}'::jsonb), $6, NOW())
+          (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, org_id, updated_at)
+        VALUES ($1, $2, $3, COALESCE($4::jsonb, '[]'::jsonb), COALESCE($5::jsonb, '{}'::jsonb), $6, $8::uuid, NOW())
         ON CONFLICT (wa_number, contact_number)
         DO UPDATE SET
           name = COALESCE(EXCLUDED.name, coexistence.contacts.name),
           tags = COALESCE($4::jsonb, coexistence.contacts.tags),
           custom_fields = COALESCE($5::jsonb, coexistence.contacts.custom_fields),
           assigned_user_id = CASE WHEN $7::boolean THEN $6 ELSE coexistence.contacts.assigned_user_id END,
+          org_id = COALESCE(coexistence.contacts.org_id, EXCLUDED.org_id),
           updated_at = NOW()
         """,
-        wa_number, contact_number, clean_name, tags_val, cf_val, assign_val, set_assign
+        wa_number, contact_number, clean_name, tags_val, cf_val, assign_val, set_assign, org_id
     )
     return {"ok": True}
 
@@ -360,6 +364,7 @@ async def import_contacts(
 
     await assert_wa_access(user, clean_wa, tenant_ctx)
     is_admin = is_tenant_admin(user, tenant_ctx)
+    org_id = tenant_ctx.get("org_id")
 
     contents = await file.read()
     if not contents:
@@ -402,8 +407,9 @@ async def import_contacts(
     selected_tag = None
     if tagId and str(tagId).strip():
         tag_row = await db.fetchrow(
-            "SELECT id, name, color FROM coexistence.tags WHERE id = $1",
-            str(tagId).strip()
+            "SELECT id, name, color FROM coexistence.tags WHERE id = $1 AND org_id = $2::uuid",
+            str(tagId).strip(),
+            tenant_ctx["org_id"]
         )
         if tag_row:
             selected_tag = {"id": tag_row["id"], "name": tag_row["name"], "color": tag_row["color"]}
@@ -441,7 +447,7 @@ async def import_contacts(
     phone_aliases = {"phone", "phonenumber", "phoneno", "mobile", "mobilenumber", "mobileno", "whatsapp", "whatsappnumber", "contactnumber", "number", "msisdn"}
     tag_aliases = {"tag", "tags", "label", "labels"}
 
-    all_tags = await db.fetch("SELECT id, name, color FROM coexistence.tags")
+    all_tags = await db.fetch("SELECT id, name, color FROM coexistence.tags WHERE org_id = $1::uuid", tenant_ctx["org_id"])
     tag_by_name = {t["name"].lower().strip(): {"id": t["id"], "name": t["name"], "color": t["color"]} for t in all_tags}
 
     for idx, r in enumerate(rows):
@@ -500,8 +506,8 @@ async def import_contacts(
 
         res = await db.fetchrow(
             """
-            INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, updated_at)
-            VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, NOW())
+            INSERT INTO coexistence.contacts (wa_number, contact_number, name, tags, custom_fields, assigned_user_id, org_id, updated_at)
+            VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $8::uuid, NOW())
             ON CONFLICT (wa_number, contact_number)
             DO UPDATE SET
               name = COALESCE(EXCLUDED.name, coexistence.contacts.name),
@@ -521,10 +527,11 @@ async def import_contacts(
                 WHEN $7::boolean THEN $6
                 ELSE COALESCE(coexistence.contacts.assigned_user_id, $6)
               END,
+              org_id = COALESCE(coexistence.contacts.org_id, EXCLUDED.org_id),
               updated_at = NOW()
             RETURNING (xmax = 0) AS inserted
             """,
-            clean_wa, phone, name, row_tags, row_custom_fields, target_assigned_user, admin_set_assign
+            clean_wa, phone, name, row_tags, row_custom_fields, target_assigned_user, admin_set_assign, org_id
         )
 
         if res and res.get("inserted"):
@@ -669,14 +676,15 @@ async def get_single_contact(
 @router.post("/messages/mark-read")
 async def mark_read(payload: MarkReadRequest, tenant_ctx: dict = Depends(get_tenant_context)):
     await assert_contact_access(tenant_ctx["user"], payload.waNumber, payload.contactNumber, tenant_ctx)
+    org_id = tenant_ctx["org_id"]
     await db.execute(
         """
-        INSERT INTO coexistence.conversation_reads (wa_number, contact_number, last_read_at)
-        VALUES ($1, $2, NOW())
+        INSERT INTO coexistence.conversation_reads (wa_number, contact_number, last_read_at, org_id)
+        VALUES ($1, $2, NOW(), $3::uuid)
         ON CONFLICT (wa_number, contact_number)
-        DO UPDATE SET last_read_at = NOW()
+        DO UPDATE SET last_read_at = NOW(), org_id = COALESCE(coexistence.conversation_reads.org_id, EXCLUDED.org_id)
         """,
-        payload.waNumber, payload.contactNumber
+        payload.waNumber, payload.contactNumber, org_id
     )
     return {"ok": True}
 
