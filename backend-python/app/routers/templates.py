@@ -110,20 +110,54 @@ def run_validation(data: dict) -> Dict[str, str]:
 
     return e
 
+def _get_sample_value(samples: Any, key: str, default: str) -> str:
+    if not isinstance(samples, dict):
+        return default
+    val = samples.get(str(key))
+    if (val is None or val == "") and str(key).isdigit():
+        val = samples.get(int(key))
+    if val is None or val == "":
+        return default
+    return str(val)
+
+def _match_template(templates: List[dict], name: str, lang: str) -> Optional[dict]:
+    """Find matching template on Meta by name and language (exact or en <-> en_US)."""
+    for m in templates:
+        if m.get("name") == name and m.get("language") == lang:
+            return m
+    lang_base = (lang or "").lower().split("_")[0]
+    for m in templates:
+        m_lang_base = (m.get("language") or "").lower().split("_")[0]
+        if m.get("name") == name and m_lang_base == lang_base:
+            return m
+    return None
+
 def build_payload(data: dict) -> dict:
-    name = data.get("name")
-    category = data.get("category")
-    language = data.get("language")
+    name = (data.get("name") or "").strip()
+    category = (data.get("category") or "").strip()
+    language = (data.get("language") or "").strip()
     header_type = data.get("header_type") or "NONE"
     header_text = data.get("header_text")
     media_handle = data.get("media_handle")
-    body = data.get("body")
+    body = data.get("body") or ""
     footer = data.get("footer")
     buttons = data.get("buttons") or []
     samples = data.get("samples") or {}
     security_rec = data.get("security_recommendation")
     code_expiry = data.get("code_expiry_minutes")
     allow_cat_change = data.get("allow_category_change")
+
+    if isinstance(buttons, str):
+        try:
+            buttons = json.loads(buttons)
+        except Exception:
+            buttons = []
+
+    if isinstance(samples, str):
+        try:
+            samples = json.loads(samples)
+        except Exception:
+            samples = {}
 
     components = []
 
@@ -133,28 +167,34 @@ def build_payload(data: dict) -> dict:
             hc["text"] = header_text
             hv = extract_vars(header_text)
             if hv:
-                hc["example"] = {"header_text": [samples.get(hv[0]) or "Sample"]}
+                hc["example"] = {"header_text": [_get_sample_value(samples, hv[0], "Sample")]}
         else:
             if media_handle:
                 hc["example"] = {"header_handle": [media_handle]}
-        components.push(hc) if hasattr(components, 'push') else components.append(hc)
+        components.append(hc)
 
     bc = {"type": "BODY", "text": body}
     if security_rec and category == "AUTHENTICATION":
         bc["add_security_recommendation"] = True
     bv = extract_vars(body)
     if bv:
-        bc["example"] = {"body_text": [[samples.get(v) or f"sample_{v}" for v in bv]]}
+        bc["example"] = {"body_text": [[_get_sample_value(samples, v, f"sample_{v}") for v in bv]]}
     components.append(bc)
 
     if category != "AUTHENTICATION" and footer:
         components.append({"type": "FOOTER", "text": footer})
     if category == "AUTHENTICATION" and code_expiry:
-        components.append({"type": "FOOTER", "code_expiration_minutes": int(code_expiry)})
+        try:
+            exp_int = int(code_expiry)
+            components.append({"type": "FOOTER", "code_expiration_minutes": exp_int})
+        except (ValueError, TypeError):
+            pass
 
     if buttons:
         btns = []
         for b in buttons:
+            if not isinstance(b, dict):
+                continue
             b_type = b.get("type")
             if b_type == "OTP":
                 item = {
@@ -178,15 +218,19 @@ def build_payload(data: dict) -> dict:
                 btns.append({"type": "COPY_CODE", "example": [b.get("value") or "PROMO50"]})
             else:
                 btns.append({"type": "QUICK_REPLY", "text": b.get("text")})
-        components.append({"type": "BUTTONS", "buttons": btns})
+        if btns:
+            components.append({"type": "BUTTONS", "buttons": btns})
 
-    return {
+    payload = {
         "name": name,
         "language": language,
         "category": category,
-        "allow_category_change": allow_cat_change,
         "components": components
     }
+    if allow_cat_change is not None and category != "AUTHENTICATION":
+        payload["allow_category_change"] = bool(allow_cat_change)
+
+    return payload
 
 def shape_template(r: dict) -> dict:
     d = dict(r)
@@ -561,13 +605,27 @@ async def submit_template_endpoint(
         return shape_template(dict(row))
     except Exception as err:
         err_msg = str(err)
-        # If template already exists on Meta (e.g. from a prior submission where DB update failed),
-        # look it up on Meta and synchronize the local row.
-        if "already exists" in err_msg.lower():
+        logger.warning(f"[templates] Meta submission error for template {template_id} ({tpl['name']}): {err_msg}")
+
+        # Check if the template already exists on Meta
+        # This happens if a previous submission succeeded at Meta but local DB failed,
+        # or if it was submitted outside or duplicate.
+        is_dup = False
+        if isinstance(err, meta_client.MetaAPIError) and err.is_duplicate:
+            is_dup = True
+        elif any(k in err_msg.lower() for k in ("already exists", "duplicate", "invalid parameter")):
+            is_dup = True
+
+        if is_dup:
             try:
-                meta_list = await meta_client.list_templates(acc["wabaId"], acc["accessToken"])
-                match = next((m for m in meta_list if m.get("name") == tpl["name"] and m.get("language") == tpl["language"]), None)
+                meta_list = await meta_client.list_templates(acc["wabaId"], acc["accessToken"], name=tpl["name"])
+                match = _match_template(meta_list, tpl["name"], tpl["language"])
+                if not match:
+                    meta_list_all = await meta_client.list_templates(acc["wabaId"], acc["accessToken"])
+                    match = _match_template(meta_list_all, tpl["name"], tpl["language"])
+
                 if match:
+                    logger.info(f"[templates] Reconciled matching template on Meta for {tpl['name']}: {match.get('id')}")
                     m_status = map_meta_status(match.get("status"))
                     m_id = match.get("id")
                     row = await db.fetchrow(
@@ -586,9 +644,10 @@ async def submit_template_endpoint(
             except Exception as sync_err:
                 logger.warning(f"[templates] auto-sync fallback failed: {sync_err}")
 
-        is_auth = "401" in str(err) or "190" in str(err)
-        await mark_account_health(acc["id"], "invalid_token" if is_auth else "unknown_error", str(err))
-        raise HTTPException(status_code=400, detail=str(err))
+        is_auth = (getattr(err, "status_code", None) == 401) or any(k in err_msg for k in ("401", "190", "expired"))
+        if is_auth:
+            await mark_account_health(acc["id"], "invalid_token", err_msg)
+        raise HTTPException(status_code=400, detail=err_msg)
 
 @router.post("/{template_id}/sync")
 async def sync_template_endpoint(

@@ -4,6 +4,44 @@ from typing import Optional, Dict, Any, List
 
 META_API_VERSION = os.getenv("META_API_VERSION", "v21.0")
 
+class MetaAPIError(Exception):
+    """Structured error raised when Meta Graph API returns HTTP 4xx or 5xx."""
+    def __init__(self, status_code: int, error_dict: Optional[dict] = None, raw_text: str = ""):
+        self.status_code = status_code
+        self.error_dict = error_dict or {}
+        self.raw_text = raw_text
+        
+        err = self.error_dict.get("error") if isinstance(self.error_dict, dict) else {}
+        if not isinstance(err, dict):
+            err = {}
+            
+        self.message = err.get("message") or (raw_text[:300] if raw_text else "Unknown Meta error")
+        self.code = err.get("code")
+        self.subcode = err.get("error_subcode")
+        self.user_title = err.get("error_user_title")
+        self.user_msg = err.get("error_user_msg")
+        self.error_data = err.get("error_data")
+        
+        parts = [f"Meta {status_code}: {self.message}"]
+        if self.user_title:
+            parts.append(f"({self.user_title})")
+        if self.user_msg:
+            parts.append(f"- {self.user_msg}")
+        elif isinstance(self.error_data, dict) and self.error_data.get("details"):
+            parts.append(f"- {self.error_data['details']}")
+        elif isinstance(self.error_data, str) and self.error_data:
+            parts.append(f"- {self.error_data}")
+        super().__init__(" ".join(parts))
+
+    @property
+    def is_duplicate(self) -> bool:
+        full_text = f"{self.message} {self.user_title or ''} {self.user_msg or ''} {self.error_data or ''}".lower()
+        return (
+            self.subcode in (2388091, 2388046) or
+            "already exists" in full_text or
+            "duplicate" in full_text
+        )
+
 def _url(phone_number_id: str, path: str = "messages") -> str:
     return f"https://graph.facebook.com/{META_API_VERSION}/{phone_number_id}/{path}"
 
@@ -23,8 +61,7 @@ async def post_json(endpoint: str, access_token: str, payload: dict) -> dict:
             parsed = None
         
         if resp.status_code >= 400:
-            err_msg = parsed.get("error", {}).get("message") if parsed else resp.text[:300]
-            raise Exception(f"Meta {resp.status_code}: {err_msg}")
+            raise MetaAPIError(resp.status_code, parsed, resp.text)
         return parsed or {}
 
 async def send_text(
@@ -142,7 +179,11 @@ async def upload_media(
             files=files
         )
         if resp.status_code >= 400:
-            raise Exception(f"Meta upload error {resp.status_code}: {resp.text[:300]}")
+            try:
+                parsed = resp.json()
+            except Exception:
+                parsed = None
+            raise MetaAPIError(resp.status_code, parsed, resp.text)
         parsed = resp.json()
         media_id = parsed.get("id")
         if not media_id:
@@ -154,23 +195,59 @@ async def submit_template(waba_id: str, access_token: str, payload: dict) -> dic
     return await post_json(url, access_token, payload)
 
 async def delete_template(waba_id: str, access_token: str, name: str) -> bool:
-    url = f"https://graph.facebook.com/{META_API_VERSION}/{waba_id}/message_templates?name={name}"
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{waba_id}/message_templates"
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.delete(url, headers={"Authorization": f"Bearer {access_token}"})
+        resp = await client.delete(
+            url,
+            params={"name": name},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
         if resp.status_code >= 400:
-            raise Exception(f"Meta delete {resp.status_code}: {resp.text[:200]}")
+            try:
+                parsed = resp.json()
+            except Exception:
+                parsed = None
+            raise MetaAPIError(resp.status_code, parsed, resp.text)
         return True
 
-async def list_templates(waba_id: str, access_token: str, fields: Optional[str] = None, limit: int = 100) -> List[dict]:
+async def list_templates(
+    waba_id: str,
+    access_token: str,
+    fields: Optional[str] = None,
+    name: Optional[str] = None,
+    limit: int = 100
+) -> List[dict]:
     f = fields or "name,language,status,category,previous_category,quality_score,rejected_reason,id"
-    url = f"https://graph.facebook.com/{META_API_VERSION}/{waba_id}/message_templates?fields={f}&limit={limit}"
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{waba_id}/message_templates"
+    params: Dict[str, Any] = {"fields": f, "limit": limit}
+    if name:
+        params["name"] = name
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, headers={"Authorization": f"Bearer {access_token}"})
+        resp = await client.get(
+            url,
+            params=params,
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
         if resp.status_code >= 400:
-            raise Exception(f"Meta listTemplates {resp.status_code}: {resp.text[:200]}")
+            try:
+                parsed = resp.json()
+            except Exception:
+                parsed = None
+            raise MetaAPIError(resp.status_code, parsed, resp.text)
         data = resp.json()
         return data.get("data", [])
 
-async def edit_template(meta_template_id: str, access_token: str, payload: dict) -> dict:
-    url = f"https://graph.facebook.com/{META_API_VERSION}/{meta_template_id}"
+async def edit_template(
+    target_id: str,
+    access_token: str,
+    payload_or_template_id: Any,
+    maybe_payload: Optional[dict] = None
+) -> dict:
+    if maybe_payload is not None:
+        template_id = payload_or_template_id
+        payload = maybe_payload
+    else:
+        template_id = target_id
+        payload = payload_or_template_id
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{template_id}"
     return await post_json(url, access_token, payload)

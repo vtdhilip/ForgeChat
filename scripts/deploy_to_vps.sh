@@ -65,6 +65,29 @@ fi
 echo "==> Waiting for services to become healthy (10s)..."
 sleep 10
 
+echo "==> Applying pending database migrations..."
+DB_CID=$(docker ps -qf "name=synapticchat-db" | head -n 1)
+if [ -z "$DB_CID" ]; then
+  DB_CID=$(docker ps -qf "name=db" | head -n 1)
+fi
+
+if [ -n "$DB_CID" ]; then
+  docker exec -i "$DB_CID" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS coexistence; CREATE TABLE IF NOT EXISTS coexistence.schema_migrations (filename VARCHAR(255) PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT NOW());"
+  for f in db/migrations/*.sql; do
+    [ -f "$f" ] || continue
+    fname=$(basename "$f")
+    applied=$(docker exec -i "$DB_CID" psql -U postgres -d postgres -t -A -c "SELECT 1 FROM coexistence.schema_migrations WHERE filename = '$fname';" 2>/dev/null || echo "0")
+    if [ "$applied" != "1" ]; then
+      echo "  Applying migration: $fname..."
+      (echo "SET search_path TO coexistence, public;"; cat "$f"; echo "INSERT INTO coexistence.schema_migrations (filename) VALUES ('$fname') ON CONFLICT DO NOTHING;") | docker exec -i "$DB_CID" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+      echo "  Successfully applied $fname"
+    fi
+  done
+  echo "==> Migrations up to date."
+else
+  echo "WARNING: Could not find database container to run migrations."
+fi
+
 echo "==> Container status:"
 docker compose ps
 
