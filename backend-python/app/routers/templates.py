@@ -488,7 +488,7 @@ async def update_template(
             security_recommendation = $11, code_expiry_minutes = $12,
             allow_category_change = $13, status = $14, whatsapp_account_id = $15,
             template_group_key = $16, header_media_library_id = $17,
-            meta_template_id = CASE WHEN $14 = 'DRAFT' AND NOT $19::boolean THEN NULL ELSE meta_template_id END,
+            meta_template_id = CASE WHEN $19::boolean THEN NULL ELSE meta_template_id END,
             updated_at = NOW()
         WHERE id = $18
         RETURNING *
@@ -502,7 +502,7 @@ async def update_template(
         wa_id, str(data.get("name", tpl["name"])).lower(),
         data.get("header_media_library_id"),
         template_id,
-        is_approved_edit
+        new_status == "DRAFT" and not is_approved_edit
     )
     return shape_template(dict(row))
 
@@ -622,11 +622,12 @@ async def submit_template_endpoint(
             m = await meta_client.get_template(str(tpl["meta_template_id"]), acc["accessToken"])
             if m:
                 m_status = map_meta_status(m.get("status"))
+                rej_reason = None if m_status == "APPROVED" else m.get("rejected_reason")
                 row = await db.fetchrow(
                     """
                     UPDATE coexistence.message_templates
                     SET status = $1, quality_score = $2,
-                        rejection_reason = CASE WHEN $1 = 'APPROVED' THEN NULL ELSE $3 END,
+                        rejection_reason = $3,
                         submitted_at = COALESCE(submitted_at, NOW()), updated_at = NOW(),
                         last_synced_at = NOW()
                     WHERE id = $4
@@ -634,7 +635,7 @@ async def submit_template_endpoint(
                     """,
                     m_status,
                     m.get("quality_score", {}).get("score") if isinstance(m.get("quality_score"), dict) else m.get("quality_score"),
-                    m.get("rejected_reason"),
+                    rej_reason,
                     template_id
                 )
                 await mark_account_health(acc["id"], "healthy")
@@ -678,13 +679,14 @@ async def submit_template_endpoint(
                     logger.info(f"[templates] Reconciled matching template on Meta for {tpl['name']}: {match.get('id')}")
                     m_status = map_meta_status(match.get("status"))
                     m_id = str(match.get("id") or "")
+                    rej_reason = None if m_status == "APPROVED" else match.get("rejected_reason")
                     row = await db.fetchrow(
                         """
                         UPDATE coexistence.message_templates
                         SET status = $1,
                             meta_template_id = COALESCE(NULLIF(meta_template_id, ''), NULLIF($2, '')),
                             quality_score = $3,
-                            rejection_reason = CASE WHEN $1 = 'APPROVED' THEN NULL ELSE $4 END,
+                            rejection_reason = $4,
                             submitted_at = COALESCE(submitted_at, NOW()), updated_at = NOW(),
                             last_synced_at = NOW()
                         WHERE id = $5
@@ -692,7 +694,7 @@ async def submit_template_endpoint(
                         """,
                         m_status, m_id,
                         match.get("quality_score", {}).get("score") if isinstance(match.get("quality_score"), dict) else match.get("quality_score"),
-                        match.get("rejected_reason"),
+                        rej_reason,
                         template_id
                     )
                     await mark_account_health(acc["id"], "healthy")
@@ -741,20 +743,21 @@ async def sync_template_endpoint(
         match = await _find_meta_template(acc, tpl["name"], tpl["language"], tpl.get("meta_template_id"))
         if match:
             local_status = map_meta_status(match.get("status", tpl["status"]))
+            rej_reason = None if local_status == "APPROVED" else match.get("rejected_reason")
             row = await db.fetchrow(
                 """
                 UPDATE coexistence.message_templates
                 SET status = $1, quality_score = $2,
-                    rejection_reason = CASE WHEN $1 = 'APPROVED' THEN NULL ELSE $3 END,
+                    rejection_reason = $3,
                     previous_category = $4,
-                    meta_template_id = COALESCE(NULLIF(meta_template_id, ''), NULLIF($5, '')),
+                    meta_template_id = COALESCE(NULLIF($5, ''), meta_template_id),
                     last_synced_at = NOW(), updated_at = NOW()
                 WHERE id = $6
                 RETURNING *
                 """,
                 local_status,
                 match.get("quality_score", {}).get("score") if isinstance(match.get("quality_score"), dict) else match.get("quality_score"),
-                match.get("rejected_reason"),
+                rej_reason,
                 match.get("previous_category"),
                 str(match.get("id") or ""),
                 template_id
@@ -818,23 +821,22 @@ async def sync_all_templates_endpoint(
                 if m_name and m_lang and m_status:
                     local_status = map_meta_status(m_status)
                     q_score = m.get("quality_score", {}).get("score") if isinstance(m.get("quality_score"), dict) else m.get("quality_score")
-                    rej_reason = m.get("rejected_reason")
+                    rej_reason = None if local_status == "APPROVED" else m.get("rejected_reason")
 
                     res = await db.execute(
                         """
                         UPDATE coexistence.message_templates
                         SET status = $1,
                             quality_score = $2,
-                            rejection_reason = CASE WHEN $1 = 'APPROVED' THEN NULL ELSE $3 END,
-                            meta_template_id = COALESCE(NULLIF(meta_template_id, ''), NULLIF($4, '')),
+                            rejection_reason = $3,
+                            meta_template_id = COALESCE(NULLIF($4, ''), meta_template_id),
                             whatsapp_account_id = COALESCE(whatsapp_account_id, $5),
                             last_synced_at = NOW(), updated_at = NOW()
                         WHERE ($8::uuid IS NULL OR org_id = $8::uuid OR whatsapp_account_id = $5)
                           AND (
                             (meta_template_id = $4 AND $4 != '')
                             OR (
-                              COALESCE(meta_template_id, '') = ''
-                              AND (whatsapp_account_id = $5 OR (whatsapp_account_id IS NULL AND org_id = $8::uuid))
+                              (whatsapp_account_id = $5 OR (whatsapp_account_id IS NULL AND ($8::uuid IS NULL OR org_id = $8::uuid)))
                               AND lower(name) = lower($6)
                               AND (lower(language) = lower($7) OR split_part(lower(language), '_', 1) = split_part(lower($7), '_', 1))
                             )

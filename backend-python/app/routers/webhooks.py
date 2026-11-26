@@ -206,15 +206,14 @@ async def process_whatsapp_webhook(request: Request):
                             """
                             UPDATE coexistence.message_templates
                             SET status = $1,
-                                meta_template_id = COALESCE(NULLIF(meta_template_id, ''), NULLIF($2, '')),
-                                rejection_reason = CASE WHEN $1 = 'APPROVED' THEN NULL WHEN $1 = 'REJECTED' THEN $3 ELSE rejection_reason END,
+                                meta_template_id = COALESCE(NULLIF($2, ''), meta_template_id),
+                                rejection_reason = CASE WHEN $7::boolean THEN NULL WHEN $8::boolean THEN $3 ELSE rejection_reason END,
                                 last_synced_at = NOW(),
                                 updated_at = NOW()
                             WHERE (
                                 (meta_template_id = $2 AND $2 != '')
                                 OR (
-                                    COALESCE(meta_template_id, '') = ''
-                                    AND ($6::int[] IS NOT NULL AND array_length($6::int[], 1) > 0 AND (whatsapp_account_id = ANY($6::int[]) OR whatsapp_account_id IS NULL))
+                                    ($6::int[] IS NOT NULL AND array_length($6::int[], 1) > 0 AND (whatsapp_account_id = ANY($6::int[]) OR whatsapp_account_id IS NULL))
                                     AND lower(name) = lower($4)
                                     AND (lower(language) = lower($5) OR split_part(lower(language), '_', 1) = split_part(lower($5), '_', 1))
                                 )
@@ -227,7 +226,8 @@ async def process_whatsapp_webhook(request: Request):
                             )
                             RETURNING id, name, language, status, whatsapp_account_id, org_id
                             """,
-                            local_status, tpl_meta_id, reason, tpl_name or "", tpl_lang or "", waba_acc_ids or None
+                            local_status, tpl_meta_id, reason, tpl_name or "", tpl_lang or "", waba_acc_ids or None,
+                            local_status == "APPROVED", local_status == "REJECTED"
                         )
                         for upd_tpl in upd_rows:
                             logger.info(f"[webhook] Template {upd_tpl['name']} ({upd_tpl['id']}) status updated to {upd_tpl['status']}")
