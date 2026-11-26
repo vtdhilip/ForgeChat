@@ -6,7 +6,20 @@ async function req(path, opts = {}) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${text}`);
+    let cleanDetail = `${res.status} ${text}`;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.detail) {
+        cleanDetail = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail);
+      } else if (parsed.error) {
+        cleanDetail = typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error);
+      } else if (parsed.message) {
+        cleanDetail = typeof parsed.message === 'string' ? parsed.message : JSON.stringify(parsed.message);
+      }
+    } catch {}
+    const err = new Error(cleanDetail);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }

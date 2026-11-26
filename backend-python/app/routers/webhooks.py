@@ -1,16 +1,20 @@
 import os
 import json
 import asyncio
+import logging
 import hmac
 import hashlib
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from fastapi import APIRouter, HTTPException, Request, Response, Query
 from app.core.database import db
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.events import bus
 from app.services.whatsapp_service import normalize_phone
+from app.routers.templates import map_meta_status
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["Webhooks"])
 
@@ -46,14 +50,20 @@ async def verify_webhook(
 
     raise HTTPException(status_code=403, detail="Verification failed")
 
-def extract_webhook_phone_number_ids(body: Any) -> List[str]:
-    """Collect unique metadata.phone_number_id values from a Meta webhook payload."""
+def extract_webhook_account_identifiers(body: Any) -> Tuple[List[str], List[str]]:
+    """Collect unique phone_number_ids and waba_ids from a Meta webhook payload."""
+    phone_ids: list[str] = []
+    waba_ids: list[str] = []
     if not isinstance(body, dict):
-        return []
-    seen: list[str] = []
+        return phone_ids, waba_ids
     for entry in body.get("entry") or []:
         if not isinstance(entry, dict):
             continue
+        eid = entry.get("id")
+        if eid:
+            eid_str = str(eid).strip()
+            if eid_str and eid_str not in waba_ids:
+                waba_ids.append(eid_str)
         for change in entry.get("changes") or []:
             if not isinstance(change, dict):
                 continue
@@ -62,9 +72,15 @@ def extract_webhook_phone_number_ids(body: Any) -> List[str]:
             pid = metadata.get("phone_number_id") if isinstance(metadata, dict) else None
             if pid:
                 pid_str = str(pid).strip()
-                if pid_str and pid_str not in seen:
-                    seen.append(pid_str)
-    return seen
+                if pid_str and pid_str not in phone_ids:
+                    phone_ids.append(pid_str)
+    return phone_ids, waba_ids
+
+
+def extract_webhook_phone_number_ids(body: Any) -> List[str]:
+    """Collect unique metadata.phone_number_id values from a Meta webhook payload."""
+    pids, _ = extract_webhook_account_identifiers(body)
+    return pids
 
 
 def _configured_global_meta_secrets() -> List[str]:
@@ -84,18 +100,22 @@ def _configured_global_meta_secrets() -> List[str]:
 
 
 async def resolve_webhook_secrets(body: Any) -> List[str]:
-    """Resolve per-account Meta App Secrets by phone_number_id, falling back to global secrets."""
-    phone_number_ids = extract_webhook_phone_number_ids(body)
-    if phone_number_ids:
+    """Resolve per-account Meta App Secrets by phone_number_id or waba_id, falling back to global secrets."""
+    phone_number_ids, waba_ids = extract_webhook_account_identifiers(body)
+    if phone_number_ids or waba_ids:
         rows = await db.fetch(
             """
             SELECT meta_app_secret_encrypted
             FROM coexistence.whatsapp_accounts
             WHERE is_active = TRUE
-              AND phone_number_id = ANY($1::text[])
+              AND (
+                phone_number_id = ANY($1::text[])
+                OR waba_id = ANY($2::text[])
+              )
               AND meta_app_secret_encrypted IS NOT NULL
             """,
             phone_number_ids,
+            waba_ids,
         )
         per_account: list[str] = []
         for row in rows:
@@ -154,12 +174,72 @@ async def process_whatsapp_webhook(request: Request):
     entries = body.get("entry") or []
     status_updates = []
     incoming_events = []
+    template_updates = []
 
     async with db.pool.acquire() as conn:
         async with conn.transaction():
             for entry in entries:
                 for change in entry.get("changes", []):
+                    field = change.get("field")
                     value = change.get("value") or {}
+
+                    # Handle Meta message template status updates (APPROVED, REJECTED, etc.)
+                    if field == "message_template_status_update":
+                        event = (value.get("event") or "").upper()
+                        tpl_meta_id = str(value.get("message_template_id") or "")
+                        tpl_name = value.get("message_template_name")
+                        tpl_lang = value.get("message_template_language")
+                        reason = value.get("reason")
+                        waba_id = str(entry.get("id") or "").strip()
+
+                        # Resolve whatsapp_account_ids for this WABA to prevent cross-tenant collisions
+                        waba_acc_ids = []
+                        if waba_id:
+                            acc_rows = await conn.fetch(
+                                "SELECT id FROM coexistence.whatsapp_accounts WHERE waba_id = $1",
+                                waba_id
+                            )
+                            waba_acc_ids = [r["id"] for r in acc_rows]
+
+                        local_status = map_meta_status(event)
+                        upd_rows = await conn.fetch(
+                            """
+                            UPDATE coexistence.message_templates
+                            SET status = $1,
+                                meta_template_id = COALESCE(NULLIF(meta_template_id, ''), NULLIF($2, '')),
+                                rejection_reason = CASE WHEN $1 = 'APPROVED' THEN NULL WHEN $1 = 'REJECTED' THEN $3 ELSE rejection_reason END,
+                                last_synced_at = NOW(),
+                                updated_at = NOW()
+                            WHERE (
+                                (meta_template_id = $2 AND $2 != '')
+                                OR (
+                                    COALESCE(meta_template_id, '') = ''
+                                    AND ($6::int[] IS NOT NULL AND array_length($6::int[], 1) > 0 AND (whatsapp_account_id = ANY($6::int[]) OR whatsapp_account_id IS NULL))
+                                    AND lower(name) = lower($4)
+                                    AND (lower(language) = lower($5) OR split_part(lower(language), '_', 1) = split_part(lower($5), '_', 1))
+                                )
+                            )
+                            AND (
+                                $6::int[] IS NULL
+                                OR array_length($6::int[], 1) IS NULL
+                                OR whatsapp_account_id = ANY($6::int[])
+                                OR whatsapp_account_id IS NULL
+                            )
+                            RETURNING id, name, language, status, whatsapp_account_id, org_id
+                            """,
+                            local_status, tpl_meta_id, reason, tpl_name or "", tpl_lang or "", waba_acc_ids or None
+                        )
+                        for upd_tpl in upd_rows:
+                            logger.info(f"[webhook] Template {upd_tpl['name']} ({upd_tpl['id']}) status updated to {upd_tpl['status']}")
+                            template_updates.append({
+                                "templateId": upd_tpl["id"],
+                                "name": upd_tpl["name"],
+                                "language": upd_tpl["language"],
+                                "status": upd_tpl["status"],
+                                "orgId": str(upd_tpl["org_id"]) if upd_tpl["org_id"] else None
+                            })
+                        continue
+
                     if value.get("messaging_product") != "whatsapp":
                         continue
 
@@ -325,6 +405,8 @@ async def process_whatsapp_webhook(request: Request):
         await bus.emit("new-message", ev)
     for u in status_updates:
         await bus.emit("message-status", u)
+    for tu in template_updates:
+        await bus.emit("template-status", tu)
 
     return {"ok": True}
 

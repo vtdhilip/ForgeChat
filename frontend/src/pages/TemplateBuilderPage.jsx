@@ -13,6 +13,7 @@ import { PhoneFrame } from '../components/WhatsAppPreview.jsx';
 import SearchableSelect from '../components/SearchableSelect.jsx';
 import { api } from '../api.js';
 import { C, FONT, maskPhone } from '../constants.js';
+import { useServerEvents } from '../hooks/useServerEvents.js';
 
 // ─── Builder-local Design Tokens (purple accent per plan) ─────────────────────
 const B = {
@@ -77,6 +78,7 @@ const STATUSES = {
   SUBMITTED: { color: B.accentDark, bg: B.accentBg, dot: B.accent, label: 'PENDING REVIEW' },
   PENDING: { color: B.accentDark, bg: B.accentBg, dot: B.accent, label: 'PENDING REVIEW' },
   APPROVED: { color: B.green, bg: B.greenBg, dot: B.greenBright, label: 'APPROVED' },
+  ACTIVE: { color: B.green, bg: B.greenBg, dot: B.greenBright, label: 'APPROVED' },
   REJECTED: { color: B.red, bg: B.redBg, dot: B.red, label: 'REJECTED' },
   PAUSED: { color: '#E65100', bg: '#FFF3E0', dot: '#E65100', label: 'PAUSED' },
   DISABLED: { color: '#666', bg: '#EEEDE8', dot: '#666', label: 'DISABLED' },
@@ -743,7 +745,7 @@ function TemplateList({ templates, loading, onAdd, onEdit, onDelete, onView, onB
 
 
 // ─── Builder View ─────────────────────────────────────────────────────────────
-function BuilderView({ template, onBack, onSave, readOnly, accounts }) {
+function BuilderView({ template, onBack, onSave, readOnly, accounts, onRefresh }) {
   const isEdit = !!template;
   const defaultAccountId = accounts?.find(a => a.isDefault)?.id || accounts?.[0]?.id || null;
   const [whatsappAccountId, setWhatsappAccountId] = useState(template?.whatsappAccountId ?? defaultAccountId);
@@ -1084,12 +1086,23 @@ function BuilderView({ template, onBack, onSave, readOnly, accounts }) {
                 </div>
               </div>
             </div>
-            {!readOnly && (
-              <button style={{ ...btnGhostStyle, fontSize: 11, color: B.green, borderColor: B.greenBright + '44' }}
-                onClick={async () => { try { await api.templates.sync(template.id); onSave?.({}); } catch (e) { alert(e.message); } }}>
-                Refresh from Meta
-              </button>
-            )}
+            <button style={{ ...btnGhostStyle, fontSize: 11, color: B.green, borderColor: B.greenBright + '44' }}
+              onClick={async () => {
+                try {
+                  const res = await api.templates.sync(template.id);
+                  if (res?.status) {
+                    setStatus(res.status);
+                  }
+                  if (res?.meta_template_id) {
+                    setTemplateId(res.meta_template_id);
+                  }
+                  onRefresh?.({ skipSync: true, updatedTemplate: res });
+                } catch (e) {
+                  alert(e.message || 'Sync failed');
+                }
+              }}>
+              Refresh from Meta
+            </button>
           </div>
         )}
         {status === 'APPROVED' && (
@@ -1728,7 +1741,7 @@ export default function TemplateBuilderPage({ subParts = [], navigate }) {
     }
   }, [subParts, navigate]);
 
-  const loadTemplates = useCallback(async () => {
+  const loadTemplates = useCallback(async (opts = {}) => {
     setLoading(true);
     try {
       const [tpls, accs] = await Promise.all([
@@ -1737,6 +1750,16 @@ export default function TemplateBuilderPage({ subParts = [], navigate }) {
       ]);
       setTemplates(tpls);
       setAccounts(accs);
+
+      // Auto-sync in the background if any template is pending review
+      const hasPending = tpls.some(t => t.status === 'SUBMITTED' || t.status === 'PENDING');
+      if (hasPending && !opts.skipSync) {
+        api.syncAllTemplates().then((res) => {
+          if (res?.synced > 0) {
+            return api.templates.list().then(updated => setTemplates(updated));
+          }
+        }).catch(() => {});
+      }
     } catch {
       setTemplates([]);
     } finally {
@@ -1744,8 +1767,26 @@ export default function TemplateBuilderPage({ subParts = [], navigate }) {
     }
   }, []);
 
+  useServerEvents(useCallback((event) => {
+    if (event.type === 'template-status') {
+      const data = event.data;
+      if (data?.templateId) {
+        setTemplates(prev => prev.map(t =>
+          t.id === data.templateId ? { ...t, status: data.status } : t
+        ));
+      }
+    }
+  }, []));
+
   useEffect(() => {
     loadTemplates();
+  }, [loadTemplates]);
+
+  const handleRefresh = useCallback((opts = {}) => {
+    loadTemplates(opts);
+    if (opts.updatedTemplate) {
+      setSelectedTemplate(opts.updatedTemplate);
+    }
   }, [loadTemplates]);
 
   const handleAdd = () => {
@@ -1812,7 +1853,7 @@ export default function TemplateBuilderPage({ subParts = [], navigate }) {
     try {
       const res = await api.syncAllTemplates();
       console.log('Synced:', res);
-      loadTemplates();
+      await loadTemplates({ skipSync: true });
     } catch (err) {
       alert(err.message || 'Sync failed');
     } finally {
@@ -1826,11 +1867,11 @@ export default function TemplateBuilderPage({ subParts = [], navigate }) {
   };
 
   if (view === 'builder') {
-    return <BuilderView template={selectedTemplate} onBack={handleBack} onSave={handleSave} readOnly={false} accounts={accounts} />;
+    return <BuilderView template={selectedTemplate} onBack={handleBack} onSave={handleSave} readOnly={false} accounts={accounts} onRefresh={handleRefresh} />;
   }
 
   if (view === 'view') {
-    return <BuilderView template={selectedTemplate} onBack={handleBack} onSave={handleSave} readOnly={true} accounts={accounts} />;
+    return <BuilderView template={selectedTemplate} onBack={handleBack} onSave={handleSave} readOnly={true} accounts={accounts} onRefresh={handleRefresh} />;
   }
 
   return (

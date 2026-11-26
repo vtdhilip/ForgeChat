@@ -16,6 +16,8 @@ class TestTemplateStatusMapping(unittest.TestCase):
     def test_approved_passthrough(self):
         self.assertEqual(map_meta_status('APPROVED'), 'APPROVED')
         self.assertEqual(map_meta_status('approved'), 'APPROVED')
+        self.assertEqual(map_meta_status('ACTIVE'), 'APPROVED')
+        self.assertEqual(map_meta_status('active'), 'APPROVED')
 
     def test_rejected_passthrough(self):
         self.assertEqual(map_meta_status('REJECTED'), 'REJECTED')

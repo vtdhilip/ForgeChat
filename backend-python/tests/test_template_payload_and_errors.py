@@ -58,8 +58,28 @@ class TestMetaAPIError(unittest.TestCase):
         self.assertEqual(err.subcode, 2388091)
         self.assertTrue(err.is_duplicate)
         self.assertIn("Meta 400: Invalid parameter", str(err))
+        self.assertIn("(subcode 2388091)", str(err))
         self.assertIn("(Template Name Already Exists)", str(err))
         self.assertIn("A template with this name and language already exists.", str(err))
+
+    def test_meta_api_error_subcode_2388024_language_exists(self):
+        err_payload = {
+            "error": {
+                "message": "Invalid parameter",
+                "code": 100,
+                "error_subcode": 2388024,
+                "error_data": {
+                    "details": "Content in This Language Already Exists"
+                }
+            }
+        }
+        err = MetaAPIError(400, err_payload)
+        self.assertEqual(err.status_code, 400)
+        self.assertEqual(err.code, 100)
+        self.assertEqual(err.subcode, 2388024)
+        self.assertTrue(err.is_duplicate)
+        self.assertIn("subcode 2388024", str(err))
+        self.assertIn("Content in This Language Already Exists", str(err))
 
     def test_meta_api_error_error_data_details(self):
         err_payload = {

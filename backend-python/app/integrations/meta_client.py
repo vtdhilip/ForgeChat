@@ -1,4 +1,5 @@
 import os
+import json
 import httpx
 from typing import Optional, Dict, Any, List
 
@@ -23,12 +24,20 @@ class MetaAPIError(Exception):
         self.error_data = err.get("error_data")
         
         parts = [f"Meta {status_code}: {self.message}"]
+        if self.subcode:
+            parts.append(f"(subcode {self.subcode})")
         if self.user_title:
             parts.append(f"({self.user_title})")
         if self.user_msg:
             parts.append(f"- {self.user_msg}")
-        elif isinstance(self.error_data, dict) and self.error_data.get("details"):
-            parts.append(f"- {self.error_data['details']}")
+        elif isinstance(self.error_data, dict):
+            if self.error_data.get("details"):
+                parts.append(f"- {self.error_data['details']}")
+            else:
+                try:
+                    parts.append(f"- {json.dumps(self.error_data)}")
+                except Exception:
+                    pass
         elif isinstance(self.error_data, str) and self.error_data:
             parts.append(f"- {self.error_data}")
         super().__init__(" ".join(parts))
@@ -37,7 +46,7 @@ class MetaAPIError(Exception):
     def is_duplicate(self) -> bool:
         full_text = f"{self.message} {self.user_title or ''} {self.user_msg or ''} {self.error_data or ''}".lower()
         return (
-            self.subcode in (2388091, 2388046) or
+            self.subcode in (2388091, 2388046, 2388024, 2388027) or
             "already exists" in full_text or
             "duplicate" in full_text
         )
@@ -229,6 +238,10 @@ async def list_templates(
             headers={"Authorization": f"Bearer {access_token}"}
         )
         if resp.status_code >= 400:
+            # Only if a request with name filter failed with 400, retry without name filter and filter in Python
+            if name and resp.status_code == 400:
+                all_templates = await list_templates(waba_id, access_token, fields=fields, name=None, limit=limit)
+                return [t for t in all_templates if t.get("name") == name]
             try:
                 parsed = resp.json()
             except Exception:
@@ -236,6 +249,28 @@ async def list_templates(
             raise MetaAPIError(resp.status_code, parsed, resp.text)
         data = resp.json()
         return data.get("data", [])
+
+async def get_template(
+    template_id: str,
+    access_token: str,
+    fields: Optional[str] = None
+) -> Optional[dict]:
+    f = fields or "name,language,status,category,previous_category,quality_score,rejected_reason,id"
+    url = f"https://graph.facebook.com/{META_API_VERSION}/{template_id}"
+    params = {"fields": f}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            url,
+            params=params,
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        if resp.status_code >= 400:
+            try:
+                parsed = resp.json()
+            except Exception:
+                parsed = None
+            raise MetaAPIError(resp.status_code, parsed, resp.text)
+        return resp.json()
 
 async def edit_template(
     target_id: str,

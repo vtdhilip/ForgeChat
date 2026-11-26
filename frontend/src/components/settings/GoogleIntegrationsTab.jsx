@@ -53,7 +53,7 @@ export default function GoogleIntegrationsTab() {
         // Non-admins may have access to this tab but not to manage the shared
         // app credentials — fall back to the public status probe so they can
         // still connect their own account once an admin has configured it.
-        if (String(e?.message || '').startsWith('403')) {
+        if (e?.status === 403 || String(e?.message || '').startsWith('403')) {
           const s = await api.googleIntegrations.status();
           c = { configured: !!s.configured, redirectUri: s.redirectUri || '', canManage: false };
         } else {

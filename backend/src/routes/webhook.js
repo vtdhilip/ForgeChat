@@ -345,6 +345,52 @@ router.post('/webhook/whatsapp', async (req, res) => {
     const payloads = Array.isArray(payload) ? payload : [payload];
     const allRecords = [];
     for (const p of payloads) {
+      for (const entry of (p?.entry || [])) {
+        for (const change of (entry?.changes || [])) {
+          if (change.field === 'message_template_status_update') {
+            const val = change.value || {};
+            const ev = String(val.event || '').toUpperCase();
+            const localStatus = (ev === 'APPROVED' || ev === 'ACTIVE') ? 'APPROVED' : (ev === 'REJECTED' ? 'REJECTED' : (['PAUSED', 'DISABLED', 'DRAFT'].includes(ev) ? ev : (['DELETED', 'PENDING_DELETION'].includes(ev) ? 'DISABLED' : 'SUBMITTED')));
+            const tplId = String(val.message_template_id || '');
+            const tplName = val.message_template_name || '';
+            const tplLang = val.message_template_language || '';
+            const reason = val.reason || null;
+            const wabaId = String(entry?.id || '').trim();
+            try {
+              let wabaAccIds = null;
+              if (wabaId) {
+                const { rows: accRows } = await pool.query('SELECT id FROM coexistence.whatsapp_accounts WHERE waba_id = $1', [wabaId]);
+                wabaAccIds = accRows.map(r => r.id);
+              }
+              await pool.query(
+                `UPDATE coexistence.message_templates
+                 SET status = $1,
+                     meta_template_id = COALESCE(NULLIF(meta_template_id, ''), NULLIF($2, '')),
+                     rejection_reason = CASE WHEN $1 = 'APPROVED' THEN NULL WHEN $1 = 'REJECTED' THEN $3 ELSE rejection_reason END,
+                     last_synced_at = NOW(), updated_at = NOW()
+                 WHERE (
+                     (meta_template_id = $2 AND $2 != '')
+                     OR (
+                         COALESCE(meta_template_id, '') = ''
+                         AND ($6::int[] IS NOT NULL AND array_length($6::int[], 1) > 0 AND (whatsapp_account_id = ANY($6::int[]) OR whatsapp_account_id IS NULL))
+                         AND lower(name) = lower($4)
+                         AND (lower(language) = lower($5) OR split_part(lower(language), '_', 1) = split_part(lower($5), '_', 1))
+                     )
+                 )
+                 AND (
+                     $6::int[] IS NULL
+                     OR array_length($6::int[], 1) IS NULL
+                     OR whatsapp_account_id = ANY($6::int[])
+                     OR whatsapp_account_id IS NULL
+                 )`,
+                [localStatus, tplId, reason, tplName, tplLang, wabaAccIds && wabaAccIds.length > 0 ? wabaAccIds : null]
+              );
+            } catch (err) {
+              console.error('[webhook] template status update failed:', err.message);
+            }
+          }
+        }
+      }
       const records = await parseMetaPayload(p);
       allRecords.push(...records);
     }

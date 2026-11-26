@@ -16,7 +16,7 @@ const router = Router();
 
 // Every event the stream forwards. Kept as a list so adding a new push event is
 // a one-liner here + a bus.emit() at the source.
-const FORWARDED_EVENTS = ['message-status'];
+const FORWARDED_EVENTS = ['message-status', 'template-status'];
 
 router.get('/events', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
