@@ -75,15 +75,33 @@ async def get_broadcast_with_logs(broadcast_id: int, org_id: Optional[str] = Non
                  WHEN COUNT(*) FILTER (WHERE status = 'failed') > 0 THEN 'PARTIAL'
                  WHEN COUNT(*) FILTER (WHERE status IN ('sent','delivered','read')) > 0 THEN 'SENT'
                  ELSE 'UNKNOWN'
-               END AS status
+               END AS status,
+               ARRAY_AGG(DISTINCT error_message) FILTER (WHERE error_message IS NOT NULL) AS errors
         FROM coexistence.broadcast_logs
         WHERE broadcast_id = $1 AND action = 'BROADCAST'
         """,
         broadcast_id
     )
 
+    rollup = await db.fetchrow(
+        """
+        SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE bl.status = 'PENDING')::int AS pending,
+            COUNT(*) FILTER (WHERE bl.status = 'failed')::int AS failed,
+            COUNT(*) FILTER (WHERE ch.status IN ('sent','delivered','read'))::int AS sent,
+            COUNT(*) FILTER (WHERE ch.status IN ('delivered','read'))::int AS delivered,
+            COUNT(*) FILTER (WHERE ch.status = 'read')::int AS read
+        FROM coexistence.broadcast_logs bl
+        LEFT JOIN coexistence.chat_history ch ON ch.message_id = bl.wa_message_id
+        WHERE bl.broadcast_id = $1 AND bl.action = 'BROADCAST'
+        """,
+        broadcast_id
+    )
+
     logs = []
     if agg and agg["recipient_count"] > 0:
+        errs = agg.get("errors") or []
         logs.append({
             "id": f"broadcast-{broadcast_id}",
             "action": "BROADCAST",
@@ -91,7 +109,7 @@ async def get_broadcast_with_logs(broadcast_id: int, org_id: Optional[str] = Non
             "status": agg["status"],
             "sent_at": agg["sent_at"].isoformat() if agg.get("sent_at") else None,
             "wa_message_id": None,
-            "error_message": None,
+            "error_message": "; ".join(errs) if errs else None,
             "_recipientCount": agg["recipient_count"]
         })
 
@@ -103,6 +121,7 @@ async def get_broadcast_with_logs(broadcast_id: int, org_id: Optional[str] = Non
             logs.append(d)
 
     b["logs"] = logs
+    b["statusRollup"] = dict(rollup) if rollup else {}
     if b.get("created_at"):
         b["created_at"] = b["created_at"].isoformat()
     if b.get("updated_at"):
@@ -372,13 +391,37 @@ async def delete_broadcast(
         raise HTTPException(status_code=404, detail="Broadcast not found")
     return {"ok": True}
 
-@router.post("/{broadcast_id}/send")
-async def send_broadcast(
-    broadcast_id: int,
-    tenant_ctx: dict = Depends(get_tenant_context),
-    user: dict = Depends(require_permission("bulk-message"))
-):
-    org_id = tenant_ctx["org_id"]
+def _parse_json(v: Any, default: Any) -> Any:
+    if isinstance(v, (dict, list)):
+        return v
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, type(default)):
+                return parsed
+        except Exception:
+            pass
+    return default
+
+
+def _build_broadcast_template(b: dict) -> Optional[dict]:
+    if (b.get("message_type") or "template") != "template":
+        return None
+    return {
+        "id": b["t_id"],
+        "name": b["t_name"],
+        "language": b["t_language"],
+        "body": b["t_body"],
+        "header_type": b["t_header_type"],
+        "header_text": b["t_header_text"],
+        "footer": b["t_footer"],
+        "buttons": _parse_json(b.get("t_buttons"), []),
+        "samples": _parse_json(b.get("t_samples"), {}),
+        "header_media_library_id": b.get("t_header_media_library_id"),
+    }
+
+
+async def _fetch_broadcast_with_template(broadcast_id: int, org_id: Optional[str]) -> Optional[dict]:
     query = """
       SELECT b.*, t.id AS t_id, t.name AS t_name, t.language AS t_language, t.body AS t_body,
              t.header_type AS t_header_type, t.header_text AS t_header_text, t.footer AS t_footer,
@@ -388,69 +431,155 @@ async def send_broadcast(
       LEFT JOIN coexistence.message_templates t ON t.id = b.template_id AND t.org_id = b.org_id
       WHERE b.id = $1 AND b.org_id = $2::uuid
     """
-    b_row = await db.fetchrow(query, broadcast_id, org_id)
-    if not b_row:
+    row = await db.fetchrow(query, broadcast_id, org_id)
+    return dict(row) if row else None
+
+
+async def _resolve_broadcast_media(b: dict, template: Optional[dict], acc: dict, org_id: Optional[str]) -> Optional[str]:
+    msg_type = b.get("message_type") or "template"
+    tpl_ht = str(template.get("header_type") or "").upper() if template else ""
+    needs_header_media = msg_type == "template" and tpl_ht in ("IMAGE", "VIDEO", "DOCUMENT")
+    media_source_id = b.get("media_library_id") or (template.get("header_media_library_id") if needs_header_media and template else None)
+    if (msg_type in ("image", "video", "audio", "document") or needs_header_media) and media_source_id:
+        try:
+            sync = await sync_media_to_account(media_source_id, acc["id"], org_id=org_id)
+            return sync.get("metaMediaId")
+        except Exception as e:
+            print(f"[broadcasts] Media sync failed: {e}")
+    return None
+
+
+async def _dispatch_broadcast_recipient(
+    *,
+    b: dict,
+    template: Optional[dict],
+    variable_mapping: dict,
+    acc: dict,
+    recipient: dict,
+    log_id: int,
+    resolved_media_id: Optional[str],
+    await_send: bool = False,
+):
+    msg_type = b.get("message_type") or "template"
+    clean_contact = normalize_phone(recipient.get("contact_number"))
+
+    if msg_type == "template":
+        components = build_template_components(
+            template=template,
+            values=variable_mapping,
+            header_media_id=resolved_media_id,
+            recipient=recipient,
+        )
+        resolved_body = resolve_template_text(
+            template["body"], variable_mapping, template.get("samples") or {}, recipient
+        )
+        local_id = await insert_pending_row(
+            account=acc,
+            to_number=recipient["contact_number"],
+            message_type="template",
+            message_body=resolved_body or f"Template: {template['name']}",
+            template_meta={
+                "header_type": template.get("header_type") or "NONE",
+                "header_text": template.get("header_text"),
+                "header_media_library_id": b.get("media_library_id") or template.get("header_media_library_id"),
+                "footer": template.get("footer"),
+                "buttons": template.get("buttons") or [],
+            },
+        )
+        coro = dispatch_send_task(
+            kind="template",
+            account=acc,
+            to=clean_contact,
+            local_message_id=local_id,
+            payload={
+                "name": template["name"],
+                "languageCode": template.get("language") or "en",
+                "components": components,
+            },
+            origin_ref={"kind": "broadcast_log", "id": log_id},
+        )
+    elif msg_type in ("text", "link"):
+        raw_text = (b.get("url") if msg_type == "link" else b.get("body")) or ""
+        body = (
+            raw_text.replace("{{contact.name}}", recipient.get("name") or "")
+            .replace("{{contact.number}}", recipient.get("contact_number") or "")
+        )
+        local_id = await insert_pending_row(
+            account=acc,
+            to_number=recipient["contact_number"],
+            message_type="text",
+            message_body=body,
+        )
+        payload = {"body": body, "previewUrl": True} if msg_type == "link" else {"body": body}
+        coro = dispatch_send_task(
+            kind="text",
+            account=acc,
+            to=clean_contact,
+            local_message_id=local_id,
+            payload=payload,
+            origin_ref={"kind": "broadcast_log", "id": log_id},
+        )
+    elif msg_type in ("image", "video", "audio", "document"):
+        caption = (
+            (b.get("caption") or "")
+            .replace("{{contact.name}}", recipient.get("name") or "")
+            .replace("{{contact.number}}", recipient.get("contact_number") or "")
+        )
+        local_id = await insert_pending_row(
+            account=acc,
+            to_number=recipient["contact_number"],
+            message_type=msg_type,
+            message_body=caption or f"{msg_type} message",
+        )
+        coro = dispatch_send_task(
+            kind="media",
+            account=acc,
+            to=clean_contact,
+            local_message_id=local_id,
+            payload={
+                "type": msg_type,
+                "mediaId": resolved_media_id,
+                "link": None if resolved_media_id else b.get("url"),
+                "caption": caption or None,
+            },
+            origin_ref={"kind": "broadcast_log", "id": log_id},
+        )
+    else:
+        raise ValueError(f"Unsupported broadcast message_type: {msg_type}")
+
+    if await_send:
+        await coro
+    else:
+        asyncio.create_task(coro)
+
+
+@router.post("/{broadcast_id}/send")
+async def send_broadcast(
+    broadcast_id: int,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("bulk-message"))
+):
+    org_id = tenant_ctx["org_id"]
+    b = await _fetch_broadcast_with_template(broadcast_id, org_id)
+    if not b:
         raise HTTPException(status_code=404, detail="Broadcast not found")
-    b = dict(b_row)
 
     acc, err = await resolve_account(from_phone_number=b["from_number"], org_id=org_id)
     if err or not acc:
         raise HTTPException(status_code=400, detail=err or "Account not found")
 
-    recipients = b.get("recipient_numbers") or []
-    if isinstance(recipients, str):
-        try:
-            recipients = json.loads(recipients)
-        except Exception:
-            recipients = []
-
+    recipients = _parse_json(b.get("recipient_numbers"), [])
     if not recipients:
         raise HTTPException(status_code=400, detail="No recipients selected")
 
-    def _parse_json(v, default):
-        if isinstance(v, (dict, list)):
-            return v
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except Exception:
-                pass
-        return default
-
-    template = None
-    if b.get("message_type") == "template":
-        template = {
-            "id": b["t_id"],
-            "name": b["t_name"],
-            "language": b["t_language"],
-            "body": b["t_body"],
-            "header_type": b["t_header_type"],
-            "header_text": b["t_header_text"],
-            "footer": b["t_footer"],
-            "buttons": _parse_json(b["t_buttons"], []),
-            "samples": _parse_json(b["t_samples"], {}),
-            "header_media_library_id": b["t_header_media_library_id"]
-        }
-
-    # Parse variable_mapping from JSONB string if needed
+    template = _build_broadcast_template(b)
     variable_mapping = _parse_json(b.get("variable_mapping"), {})
 
     contact_ctx = await load_contact_context(
         [r if isinstance(r, str) else r.get("contact_number") for r in recipients],
         org_id=org_id
     )
-
-    resolved_media_id = None
-    tpl_ht = str(template.get("header_type") or "").upper() if template else ""
-    needs_header_media = b.get("message_type") == "template" and tpl_ht in ("IMAGE", "VIDEO", "DOCUMENT")
-    media_source_id = b.get("media_library_id") or (template.get("header_media_library_id") if needs_header_media and template else None)
-
-    if (b.get("message_type") in ("image", "video", "audio", "document") or needs_header_media) and media_source_id:
-        try:
-            sync = await sync_media_to_account(media_source_id, acc["id"], org_id=org_id)
-            resolved_media_id = sync.get("metaMediaId")
-        except Exception as e:
-            print(f"[broadcasts] Media sync failed: {e}")
+    resolved_media_id = await _resolve_broadcast_media(b, template, acc, org_id)
 
     await db.execute("UPDATE coexistence.broadcasts SET status = 'SENDING', updated_at = NOW() WHERE id = $1", broadcast_id)
 
@@ -474,61 +603,17 @@ async def send_broadcast(
             broadcast_id, recipient["contact_number"]
         )
 
-        msg_type = b.get("message_type") or "template"
         try:
-            if msg_type == "template":
-                components = build_template_components(
-                    template=template,
-                    values=variable_mapping,
-                    header_media_id=resolved_media_id,
-                    recipient=recipient
-                )
-                resolved_body = resolve_template_text(
-                    template["body"], variable_mapping, template.get("samples") or {}, recipient
-                )
-                local_id = await insert_pending_row(
-                    account=acc,
-                    to_number=recipient["contact_number"],
-                    message_type="template",
-                    message_body=resolved_body or f"Template: {template['name']}",
-                    template_meta={
-                        "header_type": template.get("header_type") or "NONE",
-                        "header_text": template.get("header_text"),
-                        "header_media_library_id": b.get("media_library_id") or template.get("header_media_library_id"),
-                        "footer": template.get("footer"),
-                        "buttons": template.get("buttons") or []
-                    }
-                )
-                asyncio.create_task(dispatch_send_task(
-                    kind="template",
-                    account=acc,
-                    to=clean_contact,
-                    local_message_id=local_id,
-                    payload={
-                        "name": template["name"],
-                        "languageCode": template.get("language") or "en",
-                        "components": components
-                    },
-                    origin_ref={"kind": "broadcast_log", "id": log_id}
-                ))
-                enqueued += 1
-            else:
-                body = (b.get("body") or "").replace("{{contact.name}}", recipient.get("name") or "")
-                local_id = await insert_pending_row(
-                    account=acc,
-                    to_number=recipient["contact_number"],
-                    message_type="text",
-                    message_body=body
-                )
-                asyncio.create_task(dispatch_send_task(
-                    kind="text",
-                    account=acc,
-                    to=clean_contact,
-                    local_message_id=local_id,
-                    payload={"body": body},
-                    origin_ref={"kind": "broadcast_log", "id": log_id}
-                ))
-                enqueued += 1
+            await _dispatch_broadcast_recipient(
+                b=b,
+                template=template,
+                variable_mapping=variable_mapping,
+                acc=acc,
+                recipient=recipient,
+                log_id=log_id,
+                resolved_media_id=resolved_media_id,
+            )
+            enqueued += 1
         except Exception as job_err:
             await db.execute(
                 "UPDATE coexistence.broadcast_logs SET status = 'failed', error_message = $1 WHERE id = $2",
@@ -538,3 +623,59 @@ async def send_broadcast(
     await db.execute("UPDATE coexistence.broadcasts SET status = 'SENT', updated_at = NOW() WHERE id = $1 AND org_id = $2::uuid", broadcast_id, org_id)
     data = await get_broadcast_with_logs(broadcast_id, org_id)
     return {**data, "enqueued": enqueued}
+
+
+@router.post("/{broadcast_id}/test")
+async def test_broadcast(
+    broadcast_id: int,
+    payload: BroadcastTestRequest,
+    tenant_ctx: dict = Depends(get_tenant_context),
+    user: dict = Depends(require_permission("bulk-message"))
+):
+    test_number = (payload.test_number or "").strip()
+    if not test_number:
+        raise HTTPException(status_code=400, detail="test_number required")
+
+    org_id = tenant_ctx["org_id"]
+    b = await _fetch_broadcast_with_template(broadcast_id, org_id)
+    if not b:
+        raise HTTPException(status_code=404, detail="Broadcast not found")
+
+    acc, err = await resolve_account(from_phone_number=b["from_number"], org_id=org_id)
+    if err or not acc:
+        raise HTTPException(status_code=400, detail=err or "Account not found")
+
+    template = _build_broadcast_template(b)
+    variable_mapping = _parse_json(b.get("variable_mapping"), {})
+    resolved_media_id = await _resolve_broadcast_media(b, template, acc, org_id)
+
+    log_id = await db.fetchval(
+        """
+        INSERT INTO coexistence.broadcast_logs (broadcast_id, action, sent_to, status)
+        VALUES ($1, 'TEST', $2, 'PENDING') RETURNING id
+        """,
+        broadcast_id, test_number
+    )
+
+    try:
+        await _dispatch_broadcast_recipient(
+            b=b,
+            template=template,
+            variable_mapping=variable_mapping,
+            acc=acc,
+            recipient={"contact_number": test_number, "name": "Test"},
+            log_id=log_id,
+            resolved_media_id=resolved_media_id,
+            await_send=True,
+        )
+    except Exception as job_err:
+        await db.execute(
+            "UPDATE coexistence.broadcast_logs SET status = 'failed', error_message = $1 WHERE id = $2",
+            str(job_err)[:500], log_id
+        )
+
+    await db.execute(
+        "UPDATE coexistence.broadcasts SET test_number = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3::uuid",
+        test_number, broadcast_id, org_id
+    )
+    return await get_broadcast_with_logs(broadcast_id, org_id)

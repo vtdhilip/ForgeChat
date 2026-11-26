@@ -273,15 +273,25 @@ async def process_whatsapp_webhook(request: Request):
                             """
                             UPDATE coexistence.chat_history
                             SET status = $1,
-                                error_message = CASE WHEN $1 = 'failed' AND $4::text IS NOT NULL THEN $4 ELSE error_message END
+                                error_message = CASE WHEN $5::boolean AND $4::text IS NOT NULL THEN $4 ELSE error_message END
                             WHERE message_id = $2
                               AND $3 > (CASE status
                                           WHEN 'sending' THEN 0 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2
                                           WHEN 'read' THEN 3 WHEN 'played' THEN 3 WHEN 'failed' THEN 2 ELSE 0 END)
                             RETURNING wa_number, contact_number, message_id
                             """,
-                            s_status, s_msg_id, new_rank, failed_err
+                            s_status, s_msg_id, new_rank, failed_err, s_status == "failed"
                         )
+                        if s_msg_id and s_status in ("sent", "delivered", "read", "failed"):
+                            await conn.execute(
+                                """
+                                UPDATE coexistence.broadcast_logs
+                                SET status = $1,
+                                    error_message = CASE WHEN $4::boolean AND $3::text IS NOT NULL THEN $3 ELSE error_message END
+                                WHERE wa_message_id = $2
+                                """,
+                                s_status, s_msg_id, failed_err, s_status == "failed"
+                            )
                         if upd:
                             status_updates.append({
                                 "waNumber": upd["wa_number"],

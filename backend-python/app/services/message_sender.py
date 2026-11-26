@@ -189,7 +189,7 @@ async def dispatch_send_task(
 
         if origin_ref and origin_ref.get("kind") == "broadcast_log" and origin_ref.get("id"):
             await db.execute(
-                "UPDATE coexistence.broadcast_logs SET status = 'sent', wamid = $1, error_message = NULL WHERE id = $2",
+                "UPDATE coexistence.broadcast_logs SET status = 'sent', wa_message_id = $1, error_message = NULL, sent_at = NOW() WHERE id = $2",
                 wamid, origin_ref["id"]
             )
     except Exception as err:
