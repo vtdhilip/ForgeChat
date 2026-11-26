@@ -407,6 +407,16 @@ async def send_broadcast(
     if not recipients:
         raise HTTPException(status_code=400, detail="No recipients selected")
 
+    def _parse_json(v, default):
+        if isinstance(v, (dict, list)):
+            return v
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                pass
+        return default
+
     template = None
     if b.get("message_type") == "template":
         template = {
@@ -417,10 +427,13 @@ async def send_broadcast(
             "header_type": b["t_header_type"],
             "header_text": b["t_header_text"],
             "footer": b["t_footer"],
-            "buttons": b["t_buttons"],
-            "samples": b["t_samples"],
+            "buttons": _parse_json(b["t_buttons"], []),
+            "samples": _parse_json(b["t_samples"], {}),
             "header_media_library_id": b["t_header_media_library_id"]
         }
+
+    # Parse variable_mapping from JSONB string if needed
+    variable_mapping = _parse_json(b.get("variable_mapping"), {})
 
     contact_ctx = await load_contact_context(
         [r if isinstance(r, str) else r.get("contact_number") for r in recipients],
@@ -466,12 +479,12 @@ async def send_broadcast(
             if msg_type == "template":
                 components = build_template_components(
                     template=template,
-                    values=b.get("variable_mapping"),
+                    values=variable_mapping,
                     header_media_id=resolved_media_id,
                     recipient=recipient
                 )
                 resolved_body = resolve_template_text(
-                    template["body"], b.get("variable_mapping") or {}, template.get("samples") or {}, recipient
+                    template["body"], variable_mapping, template.get("samples") or {}, recipient
                 )
                 local_id = await insert_pending_row(
                     account=acc,
